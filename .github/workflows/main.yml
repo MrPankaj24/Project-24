@@ -466,6 +466,12 @@ jobs:
             
             > [!WARNING]
             > **DISCLAIMER:** This kernel is for experimental purposes. Flash at your own risk! I am not responsible for bootloops, hard-bricked devices, dead SD cards, thermonuclear war, or you getting fired because your alarm app failed. Please make sure you have a working backup before flashing.
+
+            #### ✨ Core Features Included:
+            * **Root Stealth:** Integrated with SUSFS and Zeromount to completely hide root access.
+            * **Cellular Security:** Baseband Guard (BBG) blocks malicious network attacks.
+            * **Virtualization:** Full kernel-level support for LXC, Docker, and Droidspace containers.
+            * **Pentesting:** Native Kali Nethunter compatibility baked in.
             
             **Device:** ${{ github.event.inputs.DEVICE }}
             **Toolchain:** ${{ github.event.inputs.CLANG_VERSION }}
