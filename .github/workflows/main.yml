@@ -446,14 +446,27 @@ jobs:
           path: ${{ github.workspace }}/artifacts/
           retention-days: 7
 
+      - name: 🏷️ Format Safe Release Tag
+        if: github.event.inputs.MAKE_RELEASE == 'true'
+        run: |
+          # Remove spaces and parentheses from the KSU variant name for the Git Tag
+          SAFE_VARIANT=$(echo "${{ github.event.inputs.KSU_VARIANT }}" | tr -d ' ()')
+          echo "SAFE_TAG=P24-${SAFE_VARIANT}-Run${{ github.run_number }}" >> $GITHUB_ENV
+
       - name: 🚀 Publish GitHub Release
         if: github.event.inputs.MAKE_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          # The release title can still have spaces and look nice
           name: Project 24 Kernel (${{ github.event.inputs.KSU_VARIANT }}) - Run ${{ github.run_number }}
-          tag_name: P24-${{ github.event.inputs.KSU_VARIANT }}-Run${{ github.run_number }}
+          # The underlying tag will use the safe, spaceless version
+          tag_name: ${{ env.SAFE_TAG }}
           body: |
             ### ⚡ Project 24 Kernel
+            
+            > [!WARNING]
+            > **DISCLAIMER:** This kernel is for experimental purposes. Flash at your own risk! I am not responsible for bootloops, hard-bricked devices, dead SD cards, thermonuclear war, or you getting fired because your alarm app failed. Please make sure you have a working backup before flashing.
+            
             **Device:** ${{ github.event.inputs.DEVICE }}
             **Toolchain:** ${{ github.event.inputs.CLANG_VERSION }}
             **Root Variant:** ${{ github.event.inputs.KSU_VARIANT }}
