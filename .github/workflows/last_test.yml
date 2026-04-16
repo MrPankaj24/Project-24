@@ -1,0 +1,501 @@
+name: 🏗️ Last Test Custom Zero BBG SUSFS (s5e8535 / M14 - Individual Configs)
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_SOURCE:
+        description: 'Kernel Source URL (Must be the actual Linux Kernel repo!)'
+        required: true
+        default: 'https://github.com/MrPankaj24/kernel_common_modifications'
+      KERNEL_BRANCH:
+        description: 'Kernel Branch'
+        required: true
+        default: 'susfs-2.1.0+zeromount'
+      CLANG_VERSION:
+        description: 'Select Compiler Toolchain'
+        type: choice
+        options:
+          - 'clang-r487747c (AOSP - Android 14 Stable)'
+          - 'clang-r450784d (AOSP - Android 13 Release)'
+          - 'clang-22 (LLVM Official APT Repo)'
+          - 'clang-20 (Neutron Toolchain)'
+        default: 'clang-20 (Neutron Toolchain)'
+      DEVICE:
+        description: 'Device Codename'
+        required: true
+        default: 'm14x'
+        
+      # --- KERNELSU VARIANT CHOOSER ---
+      KSU_VARIANT:
+        description: 'Select KernelSU Variant'
+        type: choice
+        options:
+          - 'ReSukiSU'
+          - 'KernelSU (Official)'
+          - 'KernelSU-Next'
+          - 'wksu'
+          - 'None'
+        default: 'ReSukiSU'
+        
+      # --- INDIVIDUAL CONFIG TOGGLES ---
+      ENABLE_SU_CONFIG:
+        description: 'Enable Generated su.config (KernelSU, SUSFS, Anti-Root Bypass)?'
+        type: boolean
+        default: true
+        
+      ENABLE_PERF_CONFIG:
+        description: 'Enable perf.config?'
+        type: boolean
+        default: true
+      PERF_CONFIG_URL:
+        description: 'URL for perf.config'
+        required: false
+        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/perf.config'
+        
+      ENABLE_NETHUNTER_CONFIG:
+        description: 'Enable nethunter.config?'
+        type: boolean
+        default: true
+      NETHUNTER_CONFIG_URL:
+        description: 'URL for nethunter.config'
+        required: false
+        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
+        
+      ENABLE_CUSTOM_CONFIG:
+        description: 'Enable custom.config?'
+        type: boolean
+        default: true
+      CUSTOM_CONFIG_URL:
+        description: 'URL for custom.config'
+        required: false
+        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/custom.config'
+
+      # --- RELEASE OPTIONS ---
+      MAKE_RELEASE:
+        description: 'Create a GitHub Release? (Check this to publish artifacts)'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: 🏗️ Build Kernel (${{ github.event.inputs.DEVICE }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    
+    # Required to allow GitHub Actions to create a Release
+    permissions:
+      contents: write
+
+    env:
+      KERNEL_ROOT: ${{ github.workspace }}/kernel_workspace
+      OUTDIR: ${{ github.workspace }}/kernel_workspace/out
+      MODULES_OUTDIR: ${{ github.workspace }}/kernel_workspace/modules_out
+      FINAL_STAGING: ${{ github.workspace }}/staging
+      TARGET_SOC: s5e8535
+      PLATFORM_VERSION: 15
+      ANDROID_MAJOR_VERSION: v
+      ARCH: arm64
+      SUBARCH: arm64
+
+    steps:
+      - name: 📥 Checkout Workflow Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Install Build Dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            build-essential make bc libncurses-dev bison flex \
+            python3 python3-setuptools python-is-python3 git ccache rsync \
+            libssl-dev libelf-dev dwarves device-tree-compiler \
+            file gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu sudo \
+            lz4 zstd cpio curl wget zip unzip
+
+      - name: 🧹 Prepare Workspace Directories
+        run: |
+          set -euo pipefail
+          rm -rf "${KERNEL_ROOT}" "${FINAL_STAGING}"
+          mkdir -p "${KERNEL_ROOT}"
+          mkdir -p "${FINAL_STAGING}/lib/modules/0.0"
+
+      - name: 📥 Clone Kernel Source
+        run: |
+          echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
+          git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} ${{ github.event.inputs.KERNEL_SOURCE }} ${KERNEL_ROOT}
+
+      - name: 🔧 Setup Toolchain (${{ github.event.inputs.CLANG_VERSION }})
+        run: |
+          set -euo pipefail
+          mkdir -p ${GITHUB_WORKSPACE}/toolchains
+          cd ${GITHUB_WORKSPACE}/toolchains
+          
+          CHOICE="${{ github.event.inputs.CLANG_VERSION }}"
+          if [[ "$CHOICE" == *"AOSP"* ]]; then
+            CLANG_VER=$(echo "$CHOICE" | awk '{print $1}')
+            if [[ "$CLANG_VER" == "clang-r487747c" ]]; then
+              DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r1/${CLANG_VER}.tar.gz"
+            else
+              DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/${CLANG_VER}.tar.gz"
+            fi
+            mkdir -p ${CLANG_VER}
+            curl -L "$DL_URL" -o clang.tar.gz
+            tar -xzf clang.tar.gz -C ${CLANG_VER}
+            echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
+            echo "COMPILER_CC=clang" >> $GITHUB_ENV
+          elif [[ "$CHOICE" == *"clang-22"* ]]; then
+            curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+            sudo apt-get update -y
+            sudo apt-get install -y clang-22 llvm-22 lld-22
+            sudo ln -sf /usr/bin/clang-22 /usr/bin/clang || true
+            sudo ln -sf /usr/bin/ld.lld-22 /usr/bin/ld.lld || true
+            echo "COMPILER_PATH=/usr/bin" >> $GITHUB_ENV
+            echo "COMPILER_CC=clang-22" >> $GITHUB_ENV
+          elif [[ "$CHOICE" == *"Neutron"* ]]; then
+            mkdir -p neutron && cd neutron
+            curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+            chmod +x antman && ./antman -S
+            echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/neutron/bin" >> $GITHUB_ENV
+            echo "COMPILER_CC=clang" >> $GITHUB_ENV
+          fi
+
+      - name: ⬇️ Download AOSP Kernel Build Tools
+        run: |
+          git clone --depth=1 -b main https://android.googlesource.com/kernel/prebuilts/build-tools ${GITHUB_WORKSPACE}/toolchains/build-tools
+          echo "AOSP_TOOLS_PATH=${GITHUB_WORKSPACE}/toolchains/build-tools/linux-x86/bin" >> $GITHUB_ENV
+
+      - name: 📝 Generate Clean su.config
+        if: github.event.inputs.ENABLE_SU_CONFIG == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Generating new su.config with all SUSFS features forced to 'y'..."
+          
+          cat > arch/arm64/configs/su.config << 'EOF'
+          #Kernel SU
+          CONFIG_KPROBES=y
+          CONFIG_KPROBE_EVENTS=y
+          CONFIG_HAVE_KPROBES=y
+          CONFIG_KSU_TRACEPOINT_HOOK=n
+          CONFIG_KSU_MANUAL_HOOK=y
+          CONFIG_KSU=y
+          CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
+
+          # --- SuSFS Configuration (All Forced to y) ---
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+          CONFIG_KSU_SUSFS_SUS_MAP=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+          CONFIG_KSU_SUSFS_ENABLE_LOG=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+
+          # Disable Scamsung anti-root protection
+          CONFIG_UH=n
+          CONFIG_RKP=n
+          CONFIG_KDP=n
+          CONFIG_SECURITY_DEFEX=n
+          CONFIG_PROCA=n
+          CONFIG_FIVE=n
+
+          #Force Load Kernel Modules
+          CONFIG_MODULES=y
+          CONFIG_MODULE_FORCE_LOAD=y
+          CONFIG_MODULE_UNLOAD=y
+          CONFIG_MODULE_FORCE_UNLOAD=y
+          CONFIG_MODVERSIONS=y
+          CONFIG_MODULE_SRCVERSION_ALL=n
+          CONFIG_MODULE_SIG=n
+          CONFIG_MODULE_COMPRESS=n
+          CONFIG_TRIM_UNUSED_KSYMS=n
+
+          # --- Advanced Networking & IP Sets ---
+          CONFIG_IP_NF_TARGET_TTL=y
+          CONFIG_IP6_NF_TARGET_HL=y
+          CONFIG_IP6_NF_MATCH_HL=y
+          CONFIG_TCP_CONG_ADVANCED=y
+          CONFIG_TCP_CONG_BBR=y
+          CONFIG_NET_SCH_FQ=y
+          CONFIG_TCP_CONG_CUBIC=y
+          CONFIG_TCP_CONG_BIC=n
+          CONFIG_TCP_CONG_WESTWOOD=y
+          CONFIG_TCP_CONG_HTCP=y
+          CONFIG_IP_SET=y
+          CONFIG_IP_SET_MAX=65534
+          CONFIG_IP_SET_BITMAP_IP=y
+          CONFIG_IP_SET_BITMAP_IPMAC=y
+          CONFIG_IP_SET_BITMAP_PORT=y
+          CONFIG_IP_SET_HASH_IP=y
+          CONFIG_IP_SET_HASH_IPMARK=y
+          CONFIG_IP_SET_HASH_IPPORT=y
+          CONFIG_IP_SET_HASH_IPPORTIP=y
+          CONFIG_IP_SET_HASH_IPPORTNET=y
+          CONFIG_IP_SET_HASH_IPMAC=y
+          CONFIG_IP_SET_HASH_MAC=y
+          CONFIG_IP_SET_HASH_NETPORTNET=y
+          CONFIG_IP_SET_HASH_NET=y
+          CONFIG_IP_SET_HASH_NETNET=y
+          CONFIG_IP_SET_HASH_NETPORT=y
+          CONFIG_IP_SET_HASH_NETIFACE=y
+          CONFIG_IP_SET_LIST_SET=y
+
+          # --- Kallsyms ---
+          CONFIG_KALLSYMS=y
+          CONFIG_KALLSYMS_ALL=y
+          EOF
+          
+          echo "✅ Generated arch/arm64/configs/su.config successfully!"
+
+      - name: 📥 Fetch Individual Extra Configs
+        run: |
+          cd ${KERNEL_ROOT}/arch/arm64/configs/
+          
+          download_config() {
+            local url="$1"
+            local filename="$2"
+            if [ -n "$url" ]; then
+              local raw_url=$(echo "$url" | sed 's/github.com/raw.githubusercontent.com/' | sed 's/\/blob\//\//')
+              echo ">>> Downloading $filename from $raw_url..."
+              curl -LSs "$raw_url" -o "$filename"
+            fi
+          }
+
+          if [ "${{ github.event.inputs.ENABLE_PERF_CONFIG }}" == "true" ]; then
+            download_config "${{ github.event.inputs.PERF_CONFIG_URL }}" "perf.config"
+          fi
+          
+          if [ "${{ github.event.inputs.ENABLE_NETHUNTER_CONFIG }}" == "true" ]; then
+            download_config "${{ github.event.inputs.NETHUNTER_CONFIG_URL }}" "nethunter.config"
+          fi
+          
+          if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ]; then
+            download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
+          fi
+
+      - name: 🛡️ Inject KernelSU Variant (${{ github.event.inputs.KSU_VARIANT }})
+        run: |
+          cd ${KERNEL_ROOT}
+          rm -rf KernelSU drivers/kernelsu
+          
+          CHOICE="${{ github.event.inputs.KSU_VARIANT }}"
+          
+          if [[ "$CHOICE" == "ReSukiSU" ]]; then
+            echo ">>> Injecting ReSukiSU..."
+            git clone https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+            
+          elif [[ "$CHOICE" == *"Official"* ]]; then
+            echo ">>> Injecting Official KernelSU (Commit: 260fafed3c)..."
+            git clone https://github.com/tiann/KernelSU.git KernelSU
+            cd KernelSU
+            git checkout 260fafed3c607c552665e094383f327787f332f7
+            cd ..
+            
+            echo ">>> Fetching SUSFS patch for Official KSU..."
+            git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
+            cd susfs4ksu
+            git checkout d8358055f3410aa8775bb283d6f1c12fcc13c79d
+            cd ..
+            
+            echo ">>> Applying SUSFS patch to KernelSU..."
+            cd KernelSU
+            patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+            cd ..
+            
+            echo ">>> Running KSU local setup.sh..."
+            bash KernelSU/kernel/setup.sh
+            
+            echo ">>> Cleaning up patch files..."
+            rm -rf susfs4ksu
+            
+          elif [[ "$CHOICE" == *"Next"* ]]; then
+            echo ">>> Injecting KernelSU-Next (dev branch)..."
+            git clone -b dev https://github.com/rifsxd/KernelSU-Next.git KernelSU
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/dev/kernel/setup.sh" | bash
+            
+          elif [[ "$CHOICE" == "wksu" ]]; then
+            echo ">>> Injecting wksu (Wild_KSU)..."
+            git clone -b canary https://github.com/WildKernels/Wild_KSU.git KernelSU
+            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/wild/kernel/setup.sh" | bash -s canary
+            
+          fi
+          
+          if [[ "$CHOICE" != "None" ]]; then
+            echo ">>> Symlinking drivers/kernelsu..."
+            ln -sf ../KernelSU drivers/kernelsu
+          else
+            echo ">>> Skipping KernelSU injection."
+          fi
+
+      - name: 📥 Fetch & Apply NTSYNC Patches
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Cloning MrPankaj24/kernel_patch repository..."
+          git clone https://github.com/MrPankaj24/kernel_patch.git temp_patch_repo
+          
+          echo ">>> Applying ntsync_base.patch..."
+          # We use || true here to prevent GitHub Actions from crashing on harmless rejects like namespace.c
+          patch -p1 --forward < temp_patch_repo/ntsync_base.patch || true
+          
+          echo ">>> Applying ntsync_compat_android13-5.15.patch..."
+          patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
+          
+          echo ">>> Cleaning up patch repository..."
+          rm -rf temp_patch_repo
+
+      - name: 🔒 Inject Baseband Guard (BBG)
+        run: |
+          cd ${KERNEL_ROOT}
+          curl -LSs https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE }}_defconfig"
+          if [ -f "$DEFCONFIG_FILE" ]; then
+            echo "CONFIG_BBG=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_LOG_BUF_SHIFT=20" >> "$DEFCONFIG_FILE"
+            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$DEFCONFIG_FILE"
+          fi
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig || true
+          
+          BBG_C_FILE=$(find . -name "baseband_guard.c" | head -n 1)
+          if [ -n "$BBG_C_FILE" ] && grep -q "get_link(dentry, inode, NULL)" "$BBG_C_FILE"; then
+            curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
+            patch -p1 --forward < bbg_fix.patch
+          fi
+
+      - name: 🔨 Compile Kernel Image
+        run: |
+          set -euo pipefail
+          cd ${KERNEL_ROOT}
+          mkdir -p ${OUTDIR}
+          
+          export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
+          export CC="${COMPILER_CC}"
+          export LD=ld.lld
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+          export LLVM=1
+          export LLVM_IAS=1
+          export DTC_FLAGS="-@"
+          
+          # Always start with the base defconfig
+          CONFIG_ARGS="${{ github.event.inputs.DEVICE }}_defconfig"
+          
+          # Append individual configs ONLY if checked and downloaded successfully
+          if [ "${{ github.event.inputs.ENABLE_SU_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/su.config" ]; then CONFIG_ARGS="$CONFIG_ARGS su.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_PERF_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/perf.config" ]; then CONFIG_ARGS="$CONFIG_ARGS perf.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_NETHUNTER_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/nethunter.config" ]; then CONFIG_ARGS="$CONFIG_ARGS nethunter.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/custom.config" ]; then CONFIG_ARGS="$CONFIG_ARGS custom.config"; fi
+          
+          echo ">>> Generating Base Config using: make $CONFIG_ARGS"
+          make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
+          
+          echo ">>> Compiling Kernel ($(nproc --all) threads)..."
+          make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" 2>&1 | tee build.log
+
+      - name: 🧩 Compile & Strip Modules
+        run: |
+          set -euo pipefail
+          cd ${KERNEL_ROOT}
+          mkdir -p ${MODULES_OUTDIR}
+          export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
+          export CC="${COMPILER_CC}"
+          export LD=ld.lld
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" INSTALL_MOD_STRIP="--strip-debug --keep-section=.ARM.attributes" INSTALL_MOD_PATH="${MODULES_OUTDIR}" modules_install 2>&1 | tee -a build.log || true
+
+      - name: 📦 Package Artifacts & AnyKernel3
+        run: |
+          set -euo pipefail
+          mkdir -p ${GITHUB_WORKSPACE}/artifacts
+          
+          # --- 1. AnyKernel3 Flashable Zip ---
+          echo ">>> Cloning AnyKernel3..."
+          git clone --depth=1 https://github.com/MrPankaj24/AnyKernel3.git ${GITHUB_WORKSPACE}/AnyKernel3
+          
+          echo ">>> Copying Kernel Image to AnyKernel3..."
+          if [ -f "${OUTDIR}/arch/arm64/boot/Image" ]; then
+            cp "${OUTDIR}/arch/arm64/boot/Image" "${GITHUB_WORKSPACE}/AnyKernel3/"
+          else
+            echo "❌ Kernel Image not found!"
+            exit 1
+          fi
+          
+          echo ">>> Creating Flashable Zip..."
+          cd ${GITHUB_WORKSPACE}/AnyKernel3
+          # Clean up repo files before zipping
+          rm -rf .git README.md
+          
+          # Set dynamic Zip Name
+          AK3_ZIP_NAME="Project24-Kernel-M14-${{ github.event.inputs.KSU_VARIANT }}.zip"
+          zip -r9 "${GITHUB_WORKSPACE}/artifacts/${AK3_ZIP_NAME}" ./*
+          echo "✅ AnyKernel3 Flashable Zip created: ${AK3_ZIP_NAME}"
+          
+          # --- 2. Stripped Modules Zip ---
+          echo ">>> Packaging Stripped Modules..."
+          cd ${MODULES_OUTDIR}
+          MODULES_ZIP_NAME="Project24-Modules-M14-${{ github.event.inputs.KSU_VARIANT }}.zip"
+          
+          # Check if the lib directory exists
+          if [ -d "lib" ]; then 
+            echo ">>> Cleaning up infinite symlinks..."
+            # This is the magic fix! Deletes the source and build shortcuts.
+            rm -f lib/modules/*/build lib/modules/*/source
+            
+            echo ">>> Zipping module files..."
+            # Added -y flag just to be perfectly safe with any other symlinks
+            zip -r9y "${GITHUB_WORKSPACE}/artifacts/${MODULES_ZIP_NAME}" lib/*
+            echo "✅ Modules packed: ${MODULES_ZIP_NAME}"
+          else
+            echo "⚠️ No modules found to pack!"
+          fi
+
+      - name: ⬆️ Upload Action Artifacts (Always Runs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project24-M14-${{ github.event.inputs.KSU_VARIANT }}-build
+          path: ${{ github.workspace }}/artifacts/
+          retention-days: 7
+
+      - name: 🏷️ Format Safe Release Tag
+        if: github.event.inputs.MAKE_RELEASE == 'true'
+        run: |
+          # Remove spaces and parentheses from the KSU variant name for the Git Tag
+          SAFE_VARIANT=$(echo "${{ github.event.inputs.KSU_VARIANT }}" | tr -d ' ()')
+          echo "SAFE_TAG=P24-${SAFE_VARIANT}-Run${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: 🚀 Publish GitHub Release
+        if: github.event.inputs.MAKE_RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          # The release title can still have spaces and look nice
+          name: Project 24 Kernel (${{ github.event.inputs.KSU_VARIANT }}) - Run ${{ github.run_number }}
+          # The underlying tag will use the safe, spaceless version
+          tag_name: ${{ env.SAFE_TAG }}
+          body: |
+            ### ⚡ Project 24 Kernel
+            
+            > [!WARNING]
+            > **DISCLAIMER:** This kernel is for experimental purposes. Flash at your own risk! I am not responsible for bootloops, hard-bricked devices, dead SD cards, thermonuclear war, or you getting fired because your alarm app failed. Please make sure you have a working backup before flashing.
+
+            #### ✨ Core Features Included:
+            * **Root Stealth:** Integrated with SUSFS and Zeromount to completely hide root access.
+            * **Cellular Security:** Baseband Guard (BBG) blocks malicious network attacks.
+            * **Virtualization:** Full kernel-level support for LXC, Docker, and Droidspace containers.
+            * **Pentesting:** Native Kali Nethunter compatibility baked in.
+            
+            **Device:** ${{ github.event.inputs.DEVICE }}
+            **Toolchain:** ${{ github.event.inputs.CLANG_VERSION }}
+            **Root Variant:** ${{ github.event.inputs.KSU_VARIANT }}
+            **Branch Built:** `${{ github.event.inputs.KERNEL_BRANCH }}`
+            
+            *This release was automatically generated by GitHub Actions.*
+          files: |
+            ${{ github.workspace }}/artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
