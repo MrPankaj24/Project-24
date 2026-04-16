@@ -1,0 +1,78 @@
+name: 🧪 Test NTSYNC Patches
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_SOURCE:
+        description: 'Kernel Source URL to Test Against'
+        required: true
+        default: 'https://github.com/MrPankaj24/kernel_common_modifications'
+      KERNEL_BRANCH:
+        description: 'Kernel Branch to Test Against'
+        required: true
+        default: 'susfs-2.1.0+zeromount'
+
+jobs:
+  test-patches:
+    name: 🧩 Test NTSYNC Patch Application
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: 🧹 Prepare Workspace
+        run: |
+          rm -rf *
+          mkdir -p artifacts
+
+      - name: 📥 Clone Target Kernel Source
+        run: |
+          echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
+          git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} ${{ github.event.inputs.KERNEL_SOURCE }} kernel_workspace
+
+      - name: 📥 Fetch Patch Repository
+        run: |
+          echo ">>> Cloning MrPankaj24/kernel_patch repository..."
+          git clone https://github.com/MrPankaj24/kernel_patch.git patch_workspace
+
+      - name: 🛠️ Apply NTSYNC Patches & Check for Rejects
+        run: |
+          cd kernel_workspace
+          
+          echo ">>> Attempting to apply ntsync_base.patch..."
+          # || true ensures the script doesn't crash so we can collect rejects
+          patch -p1 --forward < ../patch_workspace/ntsync_base.patch > ../patch1_output.log 2>&1 || true
+          
+          echo ">>> Attempting to apply ntsync_compat_android13-5.15.patch..."
+          patch -p1 --forward < ../patch_workspace/ntsync_compat_android13-5.15.patch > ../patch2_output.log 2>&1 || true
+          
+          cd ..
+          
+          echo "--- PATCH 1 (BASE) OUTPUT LOG ---"
+          cat patch1_output.log
+          echo "---------------------------------"
+          echo "--- PATCH 2 (COMPAT) OUTPUT LOG ---"
+          cat patch2_output.log
+          echo "-----------------------------------"
+          
+          # Check if any reject files were created inside the kernel workspace
+          REJ_COUNT=$(find kernel_workspace -name "*.rej" | wc -l)
+          
+          if [ "$REJ_COUNT" -gt 0 ]; then
+            echo "❌ WARNING: Patch encountered conflicts! $REJ_COUNT .rej file(s) generated."
+            echo "HAS_REJECTS=true" >> $GITHUB_ENV
+            
+            # Move the logs and reject files to the artifacts folder maintaining folder structure
+            find kernel_workspace -name "*.rej" -exec cp --parents {} artifacts/ \;
+            cp patch1_output.log artifacts/
+            cp patch2_output.log artifacts/
+          else
+            echo "✅ SUCCESS: Both NTSYNC patches applied cleanly with zero rejects!"
+            echo "HAS_REJECTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: ⬆️ Upload Rejects Artifact (If Failed)
+        if: env.HAS_REJECTS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NTSYNC-Patch-Conflicts
+          path: artifacts/
+          retention-days: 3
