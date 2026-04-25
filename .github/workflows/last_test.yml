@@ -50,7 +50,7 @@ on:
       PERF_CONFIG_URL:
         description: 'URL for perf.config'
         required: false
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/perf.config'
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/perf.config'
         
       ENABLE_NETHUNTER_CONFIG:
         description: 'Enable nethunter.config?'
@@ -68,7 +68,7 @@ on:
       CUSTOM_CONFIG_URL:
         description: 'URL for custom.config'
         required: false
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/custom.config'
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/custom.config'
 
       # --- RELEASE OPTIONS ---
       MAKE_RELEASE:
