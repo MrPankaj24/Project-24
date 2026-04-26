@@ -50,7 +50,7 @@ on:
       PERF_CONFIG_URL:
         description: 'URL for perf.config'
         required: false
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/perf.config'
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/perf.config'
         
       ENABLE_NETHUNTER_CONFIG:
         description: 'Enable nethunter.config?'
@@ -68,7 +68,7 @@ on:
       CUSTOM_CONFIG_URL:
         description: 'URL for custom.config'
         required: false
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/custom.config'
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/custom.config'
 
       # --- RELEASE OPTIONS ---
       MAKE_RELEASE:
@@ -333,6 +333,22 @@ jobs:
           else
             echo ">>> Skipping KernelSU injection."
           fi
+
+      - name: 📥 Fetch & Apply NTSYNC Patches
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Cloning MrPankaj24/kernel_patch repository..."
+          git clone https://github.com/MrPankaj24/kernel_patch.git temp_patch_repo
+          
+          echo ">>> Applying ntsync_base.patch..."
+          # We use || true here to prevent GitHub Actions from crashing on harmless rejects like namespace.c
+          patch -p1 --forward < temp_patch_repo/ntsync_base.patch || true
+          
+          echo ">>> Applying ntsync_compat_android13-5.15.patch..."
+          patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
+          
+          echo ">>> Cleaning up patch repository..."
+          rm -rf temp_patch_repo
 
       - name: 🔒 Inject Baseband Guard (BBG)
         run: |
