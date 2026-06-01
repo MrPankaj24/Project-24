@@ -293,7 +293,9 @@ jobs:
           if [[ "$CHOICE" == "ReSukiSU" ]]; then
             echo ">>> Injecting ReSukiSU..."
             git clone -b dev https://github.com/ReSukiSU/ReSukiSU.git KernelSU
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/dev/kernel/setup.sh" | bash
+            chmod +x KernelSU/kernel/setup.sh
+            ./KernelSU/kernel/setup.sh
+#            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/dev/kernel/setup.sh" | bash
             
           elif [[ "$CHOICE" == *"Official"* ]]; then
             echo ">>> Injecting Official KernelSU (Commit: 260fafed3c)..."
