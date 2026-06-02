@@ -294,8 +294,8 @@ jobs:
             echo ">>> Injecting ReSukiSU..."
             git clone -b dev https://github.com/ReSukiSU/ReSukiSU.git KernelSU
             chmod +x KernelSU/kernel/setup.sh
-            ./KernelSU/kernel/setup.sh
-#            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/dev/kernel/setup.sh" | bash
+            #./KernelSU/kernel/setup.sh
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/dev/kernel/setup.sh" | bash dev
             
           elif [[ "$CHOICE" == *"Official"* ]]; then
             echo ">>> Injecting Official KernelSU (Commit: 260fafed3c)..."
