@@ -10,7 +10,7 @@ on:
       KERNEL_BRANCH:
         description: 'Kernel Branch'
         required: true
-        default: 'susfs-2.1.0_new+zeromount+test'
+        default: 'susfs-2.2.0+zeromount'
       CLANG_VERSION:
         description: 'Select Compiler Toolchain'
         type: choice
