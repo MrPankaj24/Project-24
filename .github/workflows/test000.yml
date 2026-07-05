@@ -37,6 +37,11 @@ on:
           - 'None'
         default: 'ReSukiSU'
         
+      MANAGER_BRANCH:
+        description: 'Manager Branch (Type "dev", "main", "canary", etc.)'
+        required: true
+        default: 'dev'
+        
       # --- INDIVIDUAL CONFIG TOGGLES ---
       ENABLE_SU_CONFIG:
         description: 'Enable Generated su.config (KernelSU, SUSFS, Anti-Root Bypass)?'
@@ -196,10 +201,6 @@ jobs:
           CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
           CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-          CONFIG_KSU_SUSFS_UNICODE_FILTER=y
-          CONFIG_KSU_SUSFS_SUS_KSTAT_REDIRECT=y
-          CONFIG_KSU_SUSFS_HIDDEN_NAME=y
-          CONFIG_KSU_SUSFS_HARDENED=y
 
           # Disable Scamsung anti-root protection
           CONFIG_UH=n
@@ -289,19 +290,27 @@ jobs:
           rm -rf KernelSU drivers/kernelsu
           
           CHOICE="${{ github.event.inputs.KSU_VARIANT }}"
+          BRANCH="${{ github.event.inputs.MANAGER_BRANCH }}"
           
           if [[ "$CHOICE" == "ReSukiSU" ]]; then
-            echo ">>> Injecting ReSukiSU..."
-            git clone -b dev https://github.com/ReSukiSU/ReSukiSU.git KernelSU
-            chmod +x KernelSU/kernel/setup.sh
-            #./KernelSU/kernel/setup.sh
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/dev/kernel/setup.sh" | bash dev
+            echo ">>> Injecting ReSukiSU (Branch: $BRANCH)..."
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/$BRANCH/kernel/setup.sh" | sed "s/main/$BRANCH/g" | bash -s "$BRANCH"
+
+            echo ">>> Downloading and applying 70_ksu_safety patch for ReSukiSU..."
+            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
+            
+            # Apply patch inside the KernelSU directory
+            cd KernelSU
+            patch -p1 --forward < ../ksu_safety.patch || true
+            cd ..
+            
+            echo ">>> Cleaning up safety patch file..."
+            rm ksu_safety.patch
             
           elif [[ "$CHOICE" == *"Official"* ]]; then
-            echo ">>> Injecting Official KernelSU (Commit: 260fafed3c)..."
-            git clone https://github.com/tiann/KernelSU.git KernelSU
-            cd KernelSU
-            git checkout 260fafed3c607c552665e094383f327787f332f7
+            echo ">>> Injecting Official KernelSU (Branch/Commit: $BRANCH)..."
+            git clone -b $BRANCH https://github.com/tiann/KernelSU.git KernelSU || git clone https://github.com/tiann/KernelSU.git KernelSU
+            cd KernelSU && git checkout $BRANCH || true
             cd ..
             
             echo ">>> Fetching SUSFS patch for Official KSU..."
@@ -312,7 +321,7 @@ jobs:
             
             echo ">>> Applying SUSFS patch to KernelSU..."
             cd KernelSU
-            patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+            patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
             cd ..
             
             echo ">>> Running KSU local setup.sh..."
@@ -322,14 +331,14 @@ jobs:
             rm -rf susfs4ksu
             
           elif [[ "$CHOICE" == *"Next"* ]]; then
-            echo ">>> Injecting KernelSU-Next (dev branch)..."
-            git clone -b dev https://github.com/rifsxd/KernelSU-Next.git KernelSU
-            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/dev/kernel/setup.sh" | bash
+            echo ">>> Injecting KernelSU-Next (Branch: $BRANCH)..."
+            git clone -b $BRANCH https://github.com/rifsxd/KernelSU-Next.git KernelSU
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/$BRANCH/kernel/setup.sh" | bash
             
           elif [[ "$CHOICE" == "wksu" ]]; then
-            echo ">>> Injecting wksu (Wild_KSU)..."
-            git clone -b canary https://github.com/WildKernels/Wild_KSU.git KernelSU
-            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/wild/kernel/setup.sh" | bash -s canary
+            echo ">>> Injecting wksu (Branch: $BRANCH)..."
+            git clone -b $BRANCH https://github.com/WildKernels/Wild_KSU.git KernelSU
+            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
             
           fi
           
@@ -498,7 +507,8 @@ jobs:
             **Device:** ${{ github.event.inputs.DEVICE }}
             **Toolchain:** ${{ github.event.inputs.CLANG_VERSION }}
             **Root Variant:** ${{ github.event.inputs.KSU_VARIANT }}
-            **Branch Built:** `${{ github.event.inputs.KERNEL_BRANCH }}`
+            **Manager Branch:** `${{ github.event.inputs.MANAGER_BRANCH }}`
+            **Kernel Branch Built:** `${{ github.event.inputs.KERNEL_BRANCH }}`
             
             *This release was automatically generated by GitHub Actions.*
           files: |
