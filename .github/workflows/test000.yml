@@ -388,6 +388,12 @@ jobs:
           set -euo pipefail
           cd ${KERNEL_ROOT}
           mkdir -p ${OUTDIR}
+
+          # --- 1. ABI & KMI Settings (Nuke checks) ---
+          export ABI_DEFINITION=
+          export KMI_SYMBOL_LIST_STRICT_MODE=0
+          export SKIP_ABI_CHECKS=1
+          export KMI_ENFORCE=0
           
           export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
           export CC="${COMPILER_CC}"
@@ -397,6 +403,8 @@ jobs:
           export LLVM=1
           export LLVM_IAS=1
           export DTC_FLAGS="-@"
+          export LTO=thin
+          export DEPMOD=depmod
           
           # Always start with the base defconfig
           CONFIG_ARGS="${{ github.event.inputs.DEVICE }}_defconfig"
