@@ -432,8 +432,8 @@ jobs:
           cd ${KERNEL_ROOT}
           
           # Set dummy git credentials for the GitHub Action bot
-          git config --global user.email "surendersingh54275@gmail.com"
-          git config --global user.name "MrPankaj24"
+          git config --global user.email "action@github.com"
+          git config --global user.name "Action"
           
           # 1. Commit all changes in the main kernel tree
           echo ">>> Committing all kernel patches to remove -dirty tag..."
