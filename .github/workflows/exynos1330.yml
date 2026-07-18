@@ -76,7 +76,7 @@ on:
       ENABLE_NETHUNTER_CONFIG:
         description: 'Enable nethunter.config?'
         type: boolean
-        default: true
+        default: false
       NETHUNTER_CONFIG_URL:
         description: 'URL for nethunter.config'
         required: false
