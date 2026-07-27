@@ -29,7 +29,7 @@ on:
       ENABLE_CLANG20_FIX:
         description: 'Fix Clang-20/22 sizeof-pointer-memaccess OVT Touchscreen error? (Check if using Clang 20/22)'
         type: boolean
-        default: true
+        default: false
         
       # --- KERNELSU & SUSFS CONFIGS ---
       KSU_VARIANT:
