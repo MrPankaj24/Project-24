@@ -1,0 +1,633 @@
+name: 🏗️ Project24 BBG SUSFS (s5e8535) hunter base
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_SOURCE:
+        description: 'Kernel Source URL (Must be the actual Linux Kernel repo!)'
+        required: true
+        default: 'https://github.com/devhunter1/android_kernel_samsung_s5e8535.git'
+      KERNEL_BRANCH:
+        description: 'Kernel Branch'
+        required: true
+        default: 'lineage-23.2'
+      CLANG_VERSION:
+        description: 'Select Compiler Toolchain'
+        type: choice
+        options:
+          - 'clang-r487747c (AOSP - Android 14 Stable)'
+          - 'clang-r450784d (AOSP - Android 13 Release)'
+          - 'clang-22 (LLVM Official APT Repo)'
+          - 'clang-20 (Neutron Toolchain)'
+        default: 'clang-20 (Neutron Toolchain)'
+      DEVICE_DEFCONFIG:
+        description: 'Target Device Defconfig (Must exist in arch/arm64/configs/)'
+        required: true
+        default: 'm14x_defconfig'
+        
+      # --- TOOLCHAIN FIXES ---
+      ENABLE_CLANG20_FIX:
+        description: 'Fix Clang-20/22 sizeof-pointer-memaccess OVT Touchscreen error? (Check if using Clang 20/22)'
+        type: boolean
+        default: false
+        
+      # --- KERNELSU & SUSFS CONFIGS ---
+      KSU_VARIANT:
+        description: 'Select KernelSU Variant'
+        type: choice
+        options:
+          - 'ReSukiSU'
+          - 'KernelSU (Official)'
+          - 'KernelSU-Next'
+          - 'wksu'
+          - 'None'
+        default: 'ReSukiSU'
+        
+      MANAGER_BRANCH:
+        description: 'Manager Branch (Type "dev", "main", "canary", etc.)'
+        required: true
+        default: 'main'
+
+      SUSFS_SHA:
+        description: 'Optional: Hardcode SUSFS GitLab Commit SHA (Leave empty for latest branch commit)'
+        required: false
+        default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
+
+      ENABLE_CECS_PATCH:
+        description: 'Apply Disable CECs+ Patch?'
+        type: boolean
+        default: true    
+        
+      # --- INDIVIDUAL CONFIG TOGGLES ---
+      ENABLE_REKERNEL:
+        description: 'Inject Re:Kernel (iOS-style background app freezing optimization)?'
+        type: boolean
+        default: true
+
+      ENABLE_SU_CONFIG:
+        description: 'Enable Generated su.config (KernelSU, SUSFS, Anti-Root Bypass)?'
+        type: boolean
+        default: true
+        
+      ENABLE_SELINUX_PERMISSIVE:
+        description: 'Force SELinux Permissive Mode? (Bakes permissive options into kernel build)'
+        type: boolean
+        default: false
+
+      ENABLE_PERF_CONFIG:
+        description: 'Enable perf.config?'
+        type: boolean
+        default: false
+      PERF_CONFIG_URL:
+        description: 'URL for perf.config'
+        required: true
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
+        
+      ENABLE_NETHUNTER_CONFIG:
+        description: 'Enable nethunter.config?'
+        type: boolean
+        default: false
+      NETHUNTER_CONFIG_URL:
+        description: 'URL for nethunter.config'
+        required: false
+        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
+        
+      ENABLE_CUSTOM_CONFIG:
+        description: 'Enable custom.config?'
+        type: boolean
+        default: true
+      CUSTOM_CONFIG_URL:
+        description: 'URL for custom.config'
+        required: false
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
+
+      # --- RELEASE OPTIONS ---
+      MAKE_RELEASE:
+        description: 'Create a GitHub Release? (Check this to publish artifacts)'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: 🏗️ Build Kernel (${{ github.event.inputs.DEVICE_DEFCONFIG }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    
+    permissions:
+      contents: write
+
+    env:
+      KERNEL_ROOT: ${{ github.workspace }}/kernel_workspace
+      OUTDIR: ${{ github.workspace }}/kernel_workspace/out
+      MODULES_OUTDIR: ${{ github.workspace }}/kernel_workspace/modules_out
+      FINAL_STAGING: ${{ github.workspace }}/staging
+      TARGET_SOC: s5e8535
+      PLATFORM_VERSION: 15
+      ANDROID_MAJOR_VERSION: v
+      ARCH: arm64
+      SUBARCH: arm64
+
+    steps:
+      - name: 📥 Checkout Workflow Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Install Build Dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            build-essential make bc libncurses-dev bison flex \
+            python3 python3-setuptools python-is-python3 git ccache rsync \
+            libssl-dev libelf-dev dwarves device-tree-compiler \
+            file gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu sudo \
+            lz4 zstd cpio curl wget zip unzip patch
+
+      - name: 🧹 Prepare Workspace Directories
+        run: |
+          set -euo pipefail
+          rm -rf "${KERNEL_ROOT}" "${FINAL_STAGING}"
+          mkdir -p "${KERNEL_ROOT}"
+          mkdir -p "${FINAL_STAGING}/lib/modules/0.0"
+
+      - name: 📥 Clone Kernel Source
+        run: |
+          echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
+          git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} ${{ github.event.inputs.KERNEL_SOURCE }} ${KERNEL_ROOT}
+
+      - name: 🔧 Setup Toolchain (${{ github.event.inputs.CLANG_VERSION }})
+        run: |
+          set -euo pipefail
+          mkdir -p ${GITHUB_WORKSPACE}/toolchains
+          cd ${GITHUB_WORKSPACE}/toolchains
+          
+          CHOICE="${{ github.event.inputs.CLANG_VERSION }}"
+          if [[ "$CHOICE" == *"AOSP"* ]]; then
+            CLANG_VER=$(echo "$CHOICE" | awk '{print $1}')
+            if [[ "$CLANG_VER" == "clang-r487747c" ]]; then
+              DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r1/${CLANG_VER}.tar.gz"
+            else
+              DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/${CLANG_VER}.tar.gz"
+            fi
+            mkdir -p ${CLANG_VER}
+            curl -L "$DL_URL" -o clang.tar.gz
+            tar -xzf clang.tar.gz -C ${CLANG_VER}
+            echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
+            echo "COMPILER_CC=clang" >> $GITHUB_ENV
+          elif [[ "$CHOICE" == *"clang-22"* ]]; then
+            curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+            sudo apt-get update -y
+            sudo apt-get install -y clang-22 llvm-22 lld-22
+            sudo ln -sf /usr/bin/clang-22 /usr/bin/clang || true
+            sudo ln -sf /usr/bin/ld.lld-22 /usr/bin/ld.lld || true
+            echo "COMPILER_PATH=/usr/bin" >> $GITHUB_ENV
+            echo "COMPILER_CC=clang-22" >> $GITHUB_ENV
+          elif [[ "$CHOICE" == *"Neutron"* ]]; then
+            mkdir -p neutron && cd neutron
+            curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+            chmod +x antman && ./antman -S
+            echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/neutron/bin" >> $GITHUB_ENV
+            echo "COMPILER_CC=clang" >> $GITHUB_ENV
+          fi
+
+      - name: ⬇️ Download AOSP Kernel Build Tools
+        run: |
+          git clone --depth=1 -b main https://android.googlesource.com/kernel/prebuilts/build-tools ${GITHUB_WORKSPACE}/toolchains/build-tools
+          echo "AOSP_TOOLS_PATH=${GITHUB_WORKSPACE}/toolchains/build-tools/linux-x86/bin" >> $GITHUB_ENV
+
+      - name: 📝 Generate Clean su.config
+        if: github.event.inputs.ENABLE_SU_CONFIG == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Generating new su.config with all SUSFS features forced to 'y'..."
+          
+          cat > arch/arm64/configs/su.config << 'EOF'
+          #Kernel SU
+          CONFIG_KPROBES=y
+          CONFIG_KPROBE_EVENTS=y
+          CONFIG_HAVE_KPROBES=y
+          CONFIG_KSU_TRACEPOINT_HOOK=n
+          CONFIG_KSU_MANUAL_HOOK=y
+          CONFIG_KSU=y
+          CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
+
+          # --- SuSFS Configuration (All Forced to y) ---
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+          CONFIG_KSU_SUSFS_SUS_MAP=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+          CONFIG_KSU_SUSFS_ENABLE_LOG=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+
+          # Disable Scamsung anti-root protection
+          CONFIG_UH=n
+          CONFIG_RKP=n
+          CONFIG_KDP=n
+          CONFIG_SECURITY_DEFEX=n
+          CONFIG_PROCA=n
+          CONFIG_FIVE=n
+
+          #Force Load Kernel Modules
+          CONFIG_MODULES=y
+          CONFIG_MODULE_FORCE_LOAD=y
+          CONFIG_MODULE_UNLOAD=y
+          CONFIG_MODULE_FORCE_UNLOAD=y
+          CONFIG_MODVERSIONS=y
+          CONFIG_MODULE_SRCVERSION_ALL=n
+          CONFIG_MODULE_SIG=n
+          CONFIG_MODULE_COMPRESS=n
+          CONFIG_TRIM_UNUSED_KSYMS=n
+
+          # --- Kallsyms ---
+          CONFIG_KALLSYMS=y
+          CONFIG_KALLSYMS_ALL=y
+          # 🌟 ELIXIR FIX: Force NTSYNC to compile built-in to prevent external modpost errors
+          CONFIG_NTSYNC=y
+          #Maintener
+          CONFIG_LOCALVERSION_AUTO=n
+          CONFIG_LOCALVERSION="@MrPankaj24"
+          EOF
+          
+          echo "✅ Generated arch/arm64/configs/su.config successfully!"
+
+      - name: 📝 Generate SELinux Permissive Config
+        if: github.event.inputs.ENABLE_SELINUX_PERMISSIVE == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Generating permissive.config to override defaults..."
+          
+          cat > arch/arm64/configs/permissive.config << 'EOF'
+          # 1. Enable developer mode so selinux_enforcing_boot defaults to 0 (Permissive)
+          CONFIG_SECURITY_SELINUX_DEVELOP=y
+
+          # 2. Enable boot parameter parsing and default it to 0
+          CONFIG_SECURITY_SELINUX_BOOTPARAM=y
+          CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE=0
+
+          # 3. Kill any OEM always-enforcing locks
+          # CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE is not set
+          # CONFIG_ALWAYS_ENFORCING is not set
+
+          # 4. Bake permissive mode into the kernel's built-in command line
+          CONFIG_CMDLINE_BOOL=y
+          CONFIG_CMDLINE="androidboot.selinux=permissive enforcing=0"
+          CONFIG_CMDLINE_EXTEND=y
+          EOF
+          
+          echo "✅ Generated arch/arm64/configs/permissive.config successfully!"
+
+      - name: 📥 Fetch Individual Extra Configs
+        run: |
+          cd ${KERNEL_ROOT}/arch/arm64/configs/
+          
+          download_config() {
+            local url="$1"
+            local filename="$2"
+            if [ -n "$url" ]; then
+              local raw_url=$(echo "$url" | sed 's/github.com/raw.githubusercontent.com/' | sed 's/\/blob\//\//')
+              echo ">>> Downloading $filename from $raw_url..."
+              curl -LSs "$raw_url" -o "$filename"
+            fi
+          }
+
+          if [ "${{ github.event.inputs.ENABLE_PERF_CONFIG }}" == "true" ]; then
+            download_config "${{ github.event.inputs.PERF_CONFIG_URL }}" "perf.config"
+          fi
+          
+          if [ "${{ github.event.inputs.ENABLE_NETHUNTER_CONFIG }}" == "true" ]; then
+            download_config "${{ github.event.inputs.NETHUNTER_CONFIG_URL }}" "nethunter.config"
+          fi
+          
+          if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ]; then
+            download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
+          fi
+
+      - name: 📥 Fetch & Apply DroidSpaces Patch
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Downloading DroidSpaces patch for platform..."
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_for_1330.patch" -o droidspace_1330.patch
+          
+          echo ">>> Applying DroidSpaces patch..."
+          patch -p1 --forward < droidspace_1330.patch || true
+          rm droidspace_1330.patch
+          echo "✅ Patch application step finished."
+
+      - name: 🛡️ Inject KernelSU Variant & Apply Locked SUSFS Patches
+        run: |
+          cd ${KERNEL_ROOT}
+          rm -rf KernelSU drivers/kernelsu
+          
+          CHOICE="${{ github.event.inputs.KSU_VARIANT }}"
+          BRANCH="${{ github.event.inputs.MANAGER_BRANCH }}"
+          
+          if [[ "$CHOICE" == "ReSukiSU" ]]; then
+            echo ">>> Injecting ReSukiSU (Branch: $BRANCH)..."
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/$BRANCH/kernel/setup.sh" | sed "s/main/$BRANCH/g" | bash -s "$BRANCH"
+
+            echo ">>> Downloading and applying 70_ksu_safety patch for ReSukiSU..."
+            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
+            cd KernelSU && patch -p1 --forward < ../ksu_safety.patch || true && cd ..
+            rm ksu_safety.patch
+            
+          elif [[ "$CHOICE" == *"Official"* ]]; then
+            echo ">>> Injecting Official KernelSU (Branch/Commit: $BRANCH)..."
+            git clone -b $BRANCH https://github.com/tiann/KernelSU.git KernelSU || git clone https://github.com/tiann/KernelSU.git KernelSU
+            cd KernelSU && git checkout $BRANCH || true && cd ..
+            
+            echo ">>> Fetching SUSFS patch for Official KSU..."
+            git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
+            cd susfs4ksu && git checkout d8358055f3410aa8775bb283d6f1c12fcc13c79d && cd ..
+            
+            echo ">>> Applying SUSFS patch to KernelSU..."
+            cd KernelSU && patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true && cd ..
+            bash KernelSU/kernel/setup.sh
+            rm -rf susfs4ksu
+            
+          elif [[ "$CHOICE" == *"Next"* ]]; then
+            echo ">>> Injecting KernelSU-Next (Branch: $BRANCH)..."
+            git clone -b $BRANCH https://github.com/rifsxd/KernelSU-Next.git KernelSU
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/$BRANCH/kernel/setup.sh" | bash
+            
+          elif [[ "$CHOICE" == "wksu" ]]; then
+            echo ">>> Injecting wksu (Branch: $BRANCH)..."
+            git clone -b $BRANCH https://github.com/WildKernels/Wild_KSU.git KernelSU
+            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
+          fi
+          
+          if [[ "$CHOICE" != "None" ]]; then
+            echo ">>> Symlinking drivers/kernelsu..."
+            ln -sf ../KernelSU drivers/kernelsu
+            
+            # --- APPLY LOCKED SUSFS TO KERNEL TREE ---
+            echo ">>> Cloning Official SUSFS repository..."
+            git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
+            
+            if [ -n "${{ github.event.inputs.SUSFS_SHA }}" ]; then
+              echo ">>> Locking SUSFS commit to SHA: ${{ github.event.inputs.SUSFS_SHA }}..."
+              cd susfs_repo && git checkout ${{ github.event.inputs.SUSFS_SHA }} && cd ..
+            fi
+            
+            echo ">>> Copying SUSFS core fs and headers into kernel tree..."
+            cp -rf susfs_repo/kernel_patches/fs/* fs/
+            cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
+            
+            echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
+            patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
+            
+            echo ">>> Fetching custom reject resolution patch 51_fix_susfs_rejects.patch..."
+            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch" -o 51_fix.patch
+            
+            echo ">>> Applying custom patch 51 to cleanly resolve rejects..."
+            patch -p1 --forward < 51_fix.patch
+            
+            echo ">>> Cleaning up SUSFS patch residue..."
+            rm -rf susfs_repo 51_fix.patch
+            find . -name "*.orig" -delete -o -name "*.rej" -delete
+          else
+            echo ">>> Skipping KernelSU & SUSFS injection."
+          fi
+
+      - name: 📥 Fetch & Apply NTSYNC Patches
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Cloning MrPankaj24/kernel_patch repository..."
+          git clone https://github.com/MrPankaj24/kernel_patch.git temp_patch_repo
+          
+          echo ">>> Applying ntsync_base.patch..."
+          patch -p1 --forward < temp_patch_repo/ntsync_base.patch || true
+          
+          echo ">>> Applying ntsync_compat_android13-5.15.patch..."
+          patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
+          
+          echo ">>> Cleaning up patch repository..."
+          rm -rf temp_patch_repo
+
+      - name: 🔒 Inject Baseband Guard (BBG)
+        run: |
+          cd ${KERNEL_ROOT}
+          curl -LSs https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
+          if [ -f "$DEFCONFIG_FILE" ]; then
+            echo "CONFIG_BBG=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_LOG_BUF_SHIFT=20" >> "$DEFCONFIG_FILE"
+            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$DEFCONFIG_FILE"
+          fi
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig || true
+          
+          BBG_C_FILE=$(find . -name "baseband_guard.c" | head -n 1)
+          if [ -n "$BBG_C_FILE" ] && grep -q "get_link(dentry, inode, NULL)" "$BBG_C_FILE"; then
+            curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
+            patch -p1 --forward < bbg_fix.patch
+          fi
+
+      - name: ⚡ Inject Re:Kernel Optimization
+        if: github.event.inputs.ENABLE_REKERNEL == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Cloning Sakion-Team Re:Kernel repository..."
+          git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
+          
+          echo ">>> Copying modular driver and script into place..."
+          mkdir -p drivers/rekernel
+          cp -rp temp_rekernel_repo/Integrate/rekernel/* drivers/rekernel/
+          cp temp_rekernel_repo/Integrate/patches.sh ./
+          chmod +x patches.sh
+          
+          echo ">>> Injecting pre-emptive jobctl.h header fix for cgroup freezer v2..."
+          sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
+          
+          echo ">>> Running automated Re:Kernel patch script..."
+          ./patches.sh || true
+          
+          echo ">>> Appending Re:Kernel flags to target device defconfig..."
+          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
+          if [ -f "$DEFCONFIG_FILE" ]; then
+            echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_REKERNEL_NETWORK=n" >> "$DEFCONFIG_FILE"
+          fi
+          
+          echo ">>> Cleaning up Re:Kernel installation residue..."
+          rm -rf temp_rekernel_repo patches.sh
+          echo "✅ Re:Kernel integrated successfully!"
+
+      - name: 🛠️ Fix Clang-20+ sizeof-pointer-memaccess Error
+        if: github.event.inputs.ENABLE_CLANG20_FIX == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Patching OVT touchscreen driver for newer Clang compatibility..."
+          find drivers/input/touchscreen/ovt/ -type f -name "*.c" -exec sed -i 's/sizeof(tcm_hcd->print_buf)/SEC_CMD_STR_LEN/g' {} +
+          echo "✅ Patch applied successfully!"
+
+      - name: 🛑 Apply Disable CECs+ Patch
+        if: github.event.inputs.ENABLE_CECS_PATCH == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Downloading Disable CECs+ patch..."
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/1330/test/Disable_CECs%2B.patch" -o disable_cecs.patch
+          
+          echo ">>> Applying Disable CECs+ patch..."
+          patch -p1 --forward < disable_cecs.patch || true
+          rm -f disable_cecs.patch
+          echo "✅ Disable CECs+ patch applied successfully!"
+
+      - name: 🧼 Remove -dirty tag (Commit all changes)
+        run: |
+          cd ${KERNEL_ROOT}
+          
+          # Set dummy git credentials for the GitHub Action bot
+          git config --global user.email "action@github.com"
+          git config --global user.name "Action"
+          
+          # 1. Commit all changes in the main kernel tree
+          echo ">>> Committing all kernel patches to remove -dirty tag..."
+          git add -A
+          git commit -m "auto: apply all patches, configs, and fixes" || true
+          
+          # 2. Commit changes in the KernelSU/ReSukiSU folder (if it's a git repo)
+          if [ -d "KernelSU/.git" ]; then
+            echo ">>> Committing changes in KernelSU module..."
+            cd KernelSU
+            git add -A
+            git commit -m "auto: apply su module patches" || true
+            cd ..
+          fi
+
+      - name: 🔨 Compile Kernel Image
+        run: |
+          set -euo pipefail
+          cd ${KERNEL_ROOT}
+          mkdir -p ${OUTDIR}
+          
+          export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
+          export CC="${COMPILER_CC}"
+          export LD=ld.lld
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+          export LLVM=1
+          export LLVM_IAS=1
+          export DTC_FLAGS="-@"
+          export PLATFORM_VERSION=15
+          export ANDROID_MAJOR_VERSION=t
+  
+          # Use user-selected defconfig file directly
+          CONFIG_ARGS="${{ github.event.inputs.DEVICE_DEFCONFIG }}"
+          
+          # Append individual configs ONLY if checked and verified in build folder tree
+          if [ "${{ github.event.inputs.ENABLE_SU_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/su.config" ]; then CONFIG_ARGS="$CONFIG_ARGS su.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_SELINUX_PERMISSIVE }}" == "true" ] && [ -f "arch/arm64/configs/permissive.config" ]; then CONFIG_ARGS="$CONFIG_ARGS permissive.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_PERF_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/perf.config" ]; then CONFIG_ARGS="$CONFIG_ARGS perf.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_NETHUNTER_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/nethunter.config" ]; then CONFIG_ARGS="$CONFIG_ARGS nethunter.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/custom.config" ]; then CONFIG_ARGS="$CONFIG_ARGS custom.config"; fi
+          
+          echo ">>> Generating Base Config using: make $CONFIG_ARGS"
+          make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
+          
+          echo ">>> Compiling Kernel ($(nproc --all) threads)..."
+          make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" 2>&1 | tee build.log
+
+      - name: 🧩 Compile & Strip Modules
+        run: |
+          set -euo pipefail
+          cd ${KERNEL_ROOT}
+          mkdir -p ${MODULES_OUTDIR}
+          export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
+          export CC="${COMPILER_CC}"
+          export LD=ld.lld
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" INSTALL_MOD_STRIP="--strip-debug --keep-section=.ARM.attributes" INSTALL_MOD_PATH="${MODULES_OUTDIR}" modules_install 2>&1 | tee -a build.log || true
+
+      - name: 📦 Package Artifacts & AnyKernel3
+        run: |
+          set -euo pipefail
+          mkdir -p ${GITHUB_WORKSPACE}/artifacts
+          
+          # --- 1. AnyKernel3 Flashable Zip ---
+          echo ">>> Cloning AnyKernel3..."
+          git clone --depth=1 https://github.com/MrPankaj24/AnyKernel3.git ${GITHUB_WORKSPACE}/AnyKernel3
+          
+          echo ">>> Copying Kernel Image to AnyKernel3..."
+          if [ -f "${OUTDIR}/arch/arm64/boot/Image" ]; then
+            cp "${OUTDIR}/arch/arm64/boot/Image" "${GITHUB_WORKSPACE}/AnyKernel3/"
+          else
+            echo "❌ Kernel Image not found!"
+            exit 1
+          fi
+          
+          echo ">>> Creating Flashable Zip..."
+          cd ${GITHUB_WORKSPACE}/AnyKernel3
+          rm -rf .git README.md
+          
+          SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
+          AK3_ZIP_NAME="Project24-Kernel-${SHORT_DEVICE}-${{ github.event.inputs.KSU_VARIANT }}.zip"
+          zip -r9 "${GITHUB_WORKSPACE}/artifacts/${AK3_ZIP_NAME}" ./*
+          echo "✅ AnyKernel3 Flashable Zip created: ${AK3_ZIP_NAME}"
+          
+          # --- 2. Stripped Modules Zip ---
+          echo ">>> Packaging Stripped Modules..."
+          cd ${MODULES_OUTDIR}
+          MODULES_ZIP_NAME="Project24-Modules-${SHORT_DEVICE}-${{ github.event.inputs.KSU_VARIANT }}.zip"
+          
+          if [ -d "lib" ]; then 
+            echo ">>> Cleaning up infinite symlinks..."
+            rm -f lib/modules/*/build lib/modules/*/source
+            
+            echo ">>> Zipping module files..."
+            zip -r9y "${GITHUB_WORKSPACE}/artifacts/${MODULES_ZIP_NAME}" lib/*
+            echo "✅ Modules packed: ${MODULES_ZIP_NAME}"
+          else
+            echo "⚠️ No modules found to pack!"
+          fi
+
+      - name: ⬆️ Upload Action Artifacts (Always Runs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project24-${{ github.event.inputs.DEVICE_DEFCONFIG }}-${{ github.event.inputs.KSU_VARIANT }}-build
+          path: ${{ github.workspace }}/artifacts/
+          retention-days: 7
+
+      - name: 🏷️ Format Safe Release Tag
+        if: github.event.inputs.MAKE_RELEASE == 'true'
+        run: |
+          SAFE_VARIANT=$(echo "${{ github.event.inputs.KSU_VARIANT }}" | tr -d ' ()')
+          SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
+          echo "SAFE_TAG=P24-${SHORT_DEVICE}-${SAFE_VARIANT}-Run${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: 🚀 Publish GitHub Release
+        if: github.event.inputs.MAKE_RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Project 24 Kernel (${{ github.event.inputs.DEVICE_DEFCONFIG }}) - Run ${{ github.run_number }}
+          tag_name: ${{ env.SAFE_TAG }}
+          body: |
+            ### ⚡ Project 24 Kernel
+            
+            > [!WARNING]
+            > **DISCLAIMER:** This kernel is for experimental purposes. Flash at your own risk! I am not responsible for bootloops, hard-bricked devices, dead SD cards, thermonuclear war, or you getting fired because your alarm app failed. Please make sure you have a working backup before flashing.
+
+            #### ✨ Core Features Included:
+            * **Root Stealth:** Integrated with SUSFS and Zeromount to completely hide root access.
+            * **Cellular Security:** Baseband Guard (BBG) blocks malicious network attacks.
+            * **Virtualization:** Full kernel-level support for Droidspace containers.
+            * **Background Optimization:** Re:Kernel integrated for zero-lag background app freezing.
+            
+            **Defconfig:** `${{ github.event.inputs.DEVICE_DEFCONFIG }}`
+            **Toolchain:** ${{ github.event.inputs.CLANG_VERSION }}
+            **Root Variant:** ${{ github.event.inputs.KSU_VARIANT }}
+            **Manager Branch:** `${{ github.event.inputs.MANAGER_BRANCH }}`
+            **Kernel Branch Built:** `${{ github.event.inputs.KERNEL_BRANCH }}`
+            **SUSFS Commit Pinned:** `${{ github.event.inputs.SUSFS_SHA }}`
+            
+            *This release was automatically generated by GitHub Actions.*
+          files: |
+            ${{ github.workspace }}/artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
