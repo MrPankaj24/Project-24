@@ -23,7 +23,7 @@ on:
       DEVICE_DEFCONFIG:
         description: 'Target Device Defconfig (Must exist in arch/arm64/configs/)'
         required: true
-        default: 'a14x_defconfig'
+        default: 'm14x_defconfig'
         
       # --- TOOLCHAIN FIXES ---
       ENABLE_CLANG20_FIX:
