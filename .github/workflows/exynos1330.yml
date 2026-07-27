@@ -46,12 +46,17 @@ on:
       MANAGER_BRANCH:
         description: 'Manager Branch (Type "dev", "main", "canary", etc.)'
         required: true
-        default: 'dev'
+        default: 'main'
 
       SUSFS_SHA:
         description: 'Optional: Hardcode SUSFS GitLab Commit SHA (Leave empty for latest branch commit)'
         required: false
         default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
+
+      ENABLE_CECS_PATCH:
+        description: 'Apply Disable CECs+ Patch?'
+        type: boolean
+        default: true    
         
       # --- INDIVIDUAL CONFIG TOGGLES ---
       ENABLE_SU_CONFIG:
@@ -426,6 +431,18 @@ jobs:
           echo ">>> Patching OVT touchscreen driver for newer Clang compatibility..."
           find drivers/input/touchscreen/ovt/ -type f -name "*.c" -exec sed -i 's/sizeof(tcm_hcd->print_buf)/SEC_CMD_STR_LEN/g' {} +
           echo "✅ Patch applied successfully!"
+
+      - name: 🛑 Apply Disable CECs+ Patch
+        if: github.event.inputs.ENABLE_CECS_PATCH == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Downloading Disable CECs+ patch..."
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/1330/test/Disable_CECs%2B.patch" -o disable_cecs.patch
+          
+          echo ">>> Applying Disable CECs+ patch..."
+          patch -p1 --forward < disable_cecs.patch || true
+          rm -f disable_cecs.patch
+          echo "✅ Disable CECs+ patch applied successfully!"
 
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
