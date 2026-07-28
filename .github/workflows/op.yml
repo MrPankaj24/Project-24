@@ -89,7 +89,7 @@ on:
       ENABLE_CLANG20_FIX:
         description: 'Apply Clang-20/22 sizeof-pointer-memaccess OVT Touchscreen Fix?'
         type: boolean
-        default: true
+        default: false
       ENABLE_CECS_PATCH:
         description: 'Apply Disable CECs+ Patch?'
         type: boolean
