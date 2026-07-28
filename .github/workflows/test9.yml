@@ -362,17 +362,44 @@ jobs:
 
       - name: 📥 Fetch & Apply DroidSpaces Source Patch
         if: github.event.inputs.ENABLE_DROIDSPACE == 'true'
+        shell: bash
         run: |
-          cd ${KERNEL_ROOT}
-          echo ">>> Applying DroidSpaces C source patch..."
-          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_for_1330.patch" -o droidspace_1330.patch
-          patch -p1 --forward < droidspace_1330.patch || true
-          rm droidspace_1330.patch
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
+          PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_for_1330.patch"
+          PATCH_FILE="droidspace_1330.patch"
+           
+          echo ">>> Downloading DroidSpaces C source patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+           
+          echo ">>> Validating DroidSpaces patch..."
+          test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
+          head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
+            echo "❌ Not a valid patch file. First lines:"
+            head -n 20 "${PATCH_FILE}"
+            exit 1
+          }
+           
+          echo ">>> Applying DroidSpaces patch using 'patch -p1'..."
+          patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
+           
+          echo ">>> Verifying DroidSpaces injection..."
+          if [ -f "ipc/msg.c" ]; then
+            echo "✅ DroidSpaces core modification verified!"
+          else
+            echo "❌ CRITICAL: Expected IPC targets not found."
+            exit 1
+          fi
+           
+          rm -f "${PATCH_FILE}"
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       - name: 🛡️ Inject KernelSU Variant & Apply Locked SUSFS Patches
         if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT != 'None'
+        shell: bash
         run: |
-          cd ${KERNEL_ROOT}
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
           rm -rf KernelSU drivers/kernelsu
            
           CHOICE="${{ github.event.inputs.KSU_VARIANT }}"
@@ -381,10 +408,17 @@ jobs:
           if [[ "$CHOICE" == "ReSukiSU" ]]; then
             echo ">>> Injecting ReSukiSU (Branch: $BRANCH)..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/$BRANCH/kernel/setup.sh" | sed "s/main/$BRANCH/g" | bash -s "$BRANCH"
-            echo ">>> Applying 70_ksu_safety patch for ReSukiSU..."
-            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
-            cd KernelSU && patch -p1 --forward < ../ksu_safety.patch || true && cd ..
-            rm ksu_safety.patch
+             
+            PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch"
+            PATCH_FILE="ksu_safety.patch"
+            echo ">>> Downloading ReSukiSU safety patch..."
+            curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+            test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
+            head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || { echo "❌ Invalid diff format"; exit 1; }
+            echo ">>> Applying safety patch to KernelSU..."
+            cd KernelSU && patch -p1 --fuzz=1 --forward < "../${PATCH_FILE}" && cd ..
+            echo "✅ ReSukiSU safety patch applied successfully!"
+            rm -f "${PATCH_FILE}"
              
           elif [[ "$CHOICE" == *"Official"* ]]; then
             echo ">>> Injecting Official KernelSU (Branch/Commit: $BRANCH)..."
@@ -392,7 +426,7 @@ jobs:
             cd KernelSU && git checkout $BRANCH || true && cd ..
             git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
             cd susfs4ksu && git checkout d8358055f3410aa8775bb283d6f1c12fcc13c79d && cd ..
-            cd KernelSU && patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true && cd ..
+            cd KernelSU && patch -p1 --fuzz=1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch && cd ..
             bash KernelSU/kernel/setup.sh
             rm -rf susfs4ksu
              
@@ -421,31 +455,68 @@ jobs:
             echo ">>> Copying SUSFS core fs and headers into kernel tree..."
             cp -rf susfs_repo/kernel_patches/fs/* fs/
             cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
+             
             echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
-            patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
-            echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
-            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch" -o 51_fix.patch
-            patch -p1 --forward < 51_fix.patch || true
-            rm -rf susfs_repo 51_fix.patch
+            test -s "susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch" || { echo "❌ Base SUSFS patch empty"; exit 1; }
+            patch -p1 --fuzz=1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch
+             
+            PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch"
+            PATCH_FILE="51_fix.patch"
+            echo ">>> Downloading custom reject resolution patch..."
+            curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+            test -s "${PATCH_FILE}" || { echo "❌ Reject fix patch empty"; exit 1; }
+            head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || { echo "❌ Invalid reject fix diff format"; exit 1; }
+            echo ">>> Applying SUSFS reject resolution patch..."
+            patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
+             
+            echo ">>> Verifying SUSFS injection..."
+            if [ -f "fs/susfs.c" ]; then
+              echo "✅ SUSFS core filesystem modifications verified!"
+            else
+              echo "❌ CRITICAL: fs/susfs.c is missing after patch."
+              exit 1
+            fi
+             
+            rm -rf susfs_repo "${PATCH_FILE}"
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
       - name: 📥 Fetch & Apply NTSYNC Source Patches
         if: github.event.inputs.ENABLE_NTSYNC == 'true'
+        shell: bash
         run: |
-          cd ${KERNEL_ROOT}
-          echo ">>> Applying NTSYNC C source patches..."
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
+          echo ">>> Cloning temporary NTSYNC repository..."
           git clone https://github.com/MrPankaj24/kernel_patch.git temp_patch_repo
-          patch -p1 --forward < temp_patch_repo/ntsync_base.patch || true
-          patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
+           
+          for p in "ntsync_base.patch" "ntsync_compat_android13-5.15.patch"; do
+            echo ">>> Validating ${p}..."
+            test -s "temp_patch_repo/${p}" || { echo "❌ ${p} is empty"; exit 1; }
+            head -n 1 "temp_patch_repo/${p}" | grep -qE '^(diff --git|From )' || { echo "❌ ${p} is not a valid diff"; exit 1; }
+            echo ">>> Applying ${p}..."
+            patch -p1 --fuzz=1 --forward < "temp_patch_repo/${p}"
+          done
+           
+          echo ">>> Verifying NTSYNC injection..."
+          if [ -f "drivers/misc/ntsync.c" ]; then
+            echo "✅ NTSYNC driver source (drivers/misc/ntsync.c) successfully verified!"
+          else
+            echo "❌ CRITICAL: ntsync.c is missing after patching."
+            exit 1
+          fi
+           
           rm -rf temp_patch_repo
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       # --- WILDKERNELS MULTI-SUITE STEPS ---
 
       - name: 🔒 Inject Baseband Guard (BBG)
         if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
+        shell: bash
         run: |
-          cd ${KERNEL_ROOT}
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
           echo ">>> Setting up Baseband Guard..."
           curl -LSs https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
           DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
@@ -458,14 +529,25 @@ jobs:
            
           BBG_C_FILE=$(find . -name "baseband_guard.c" | head -n 1)
           if [ -n "$BBG_C_FILE" ] && grep -q "get_link(dentry, inode, NULL)" "$BBG_C_FILE"; then
-            curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
-            patch -p1 --forward < bbg_fix.patch || true
+            PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch"
+            PATCH_FILE="bbg_fix.patch"
+            echo ">>> Downloading BBG get_link fix patch..."
+            curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+            test -s "${PATCH_FILE}" || { echo "❌ BBG fix patch is empty"; exit 1; }
+            head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || { echo "❌ BBG fix patch diff invalid"; exit 1; }
+            echo ">>> Applying BBG get_link fix patch..."
+            patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
+            echo "✅ BBG get_link fix verified!"
+            rm -f "${PATCH_FILE}"
           fi
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       - name: ⚡ Inject Re:Kernel Optimization
         if: github.event.inputs.ENABLE_REKERNEL == 'true'
+        shell: bash
         run: |
-          cd ${KERNEL_ROOT}
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
           echo ">>> Injecting Re:Kernel background app freezing optimization..."
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
           mkdir -p drivers/rekernel
@@ -483,10 +565,13 @@ jobs:
 
       - name: 🛠️ Fix Clang-20+ sizeof-pointer-memaccess Error
         if: github.event.inputs.ENABLE_CLANG20_FIX == 'true'
+        shell: bash
         run: |
-          cd ${KERNEL_ROOT}
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
           echo ">>> Patching OVT touchscreen driver for newer Clang compatibility..."
           find drivers/input/touchscreen/ovt/ -type f -name "*.c" -exec sed -i 's/sizeof(tcm_hcd->print_buf)/SEC_CMD_STR_LEN/g' {} +
+          echo "✅ OVT Touchscreen pointer access patched!"
 
       - name: 🛑 Apply CRCs Disable Patch
         if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
@@ -494,14 +579,13 @@ jobs:
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-
           PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/CRCs_disable.patch"
           PATCH_FILE="CRCs_disable.patch"
 
           echo ">>> Downloading CRCs_disable patch..."
           curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
 
-          echo ">>> Validating patch..."
+          echo ">>> Validating CRCs_disable patch..."
           test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
           head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
             echo "❌ Not a valid patch file. First lines:"
@@ -509,17 +593,12 @@ jobs:
             exit 1
           }
 
-          echo ">>> Checking applicability..."
-          if git apply --check "${PATCH_FILE}"; then
-            git apply "${PATCH_FILE}"
-            echo "✅ CRCs_disable patch applied successfully."
-          else
-            echo "❌ Patch failed to apply cleanly."
-            git apply --check --verbose "${PATCH_FILE}" || true
-            exit 1
-          fi
+          echo ">>> Applying CRCs_disable patch using 'patch -p1'..."
+          patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
+          echo "✅ CRCs_disable patch successfully injected!"
 
           rm -f "${PATCH_FILE}"
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       - name: 🌐 Apply BBRv3 TCP Congestion Control Source Patch
         if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
@@ -527,14 +606,13 @@ jobs:
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-
           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android13-5.15.patch"
           PATCH_FILE="bbrv3.patch"
 
           echo ">>> Downloading BBRv3 C source patch..."
           curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
 
-          echo ">>> Validating patch..."
+          echo ">>> Validating BBRv3 patch..."
           test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
           head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
             echo "❌ Not a valid patch file. First lines:"
@@ -562,10 +640,26 @@ jobs:
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-          echo ">>> Downloading and applying Unicode Bypass Fix..."
-          curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch" -o unicode_fix.patch
-          patch -p1 --forward < unicode_fix.patch || true
-          rm -f unicode_fix.patch
+          PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch"
+          PATCH_FILE="unicode_fix.patch"
+           
+          echo ">>> Downloading Unicode Bypass Fix patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+           
+          echo ">>> Validating Unicode Bypass Fix patch..."
+          test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
+          head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
+            echo "❌ Not a valid patch file. First lines:"
+            head -n 20 "${PATCH_FILE}"
+            exit 1
+          }
+           
+          echo ">>> Applying Unicode Bypass Fix patch..."
+          patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
+          echo "✅ Unicode root detection bypass fix successfully applied!"
+           
+          rm -f "${PATCH_FILE}"
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       - name: 🌐 Enable CAKE & PIE Qdisc Net Schedulers
         if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
@@ -581,6 +675,7 @@ jobs:
           CONFIG_NET_SCH_PIE=y
           CONFIG_NET_SCH_FQ_PIE=y
           EOF
+            echo "✅ Network scheduler Kconfig entries injected!"
           fi
 
       - name: 🛡️ Apply IPv6 NAT Masquerading Fix Patch
@@ -589,10 +684,33 @@ jobs:
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-          echo ">>> Applying IPv6 NAT Masquerading Fix patch..."
-          curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/IPv6_NAT_FIX.patch" -o ipv6_nat.patch
-          patch -p1 --forward < ipv6_nat.patch || true
-          rm -f ipv6_nat.patch
+          PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/IPv6_NAT_FIX.patch"
+          PATCH_FILE="ipv6_nat.patch"
+           
+          echo ">>> Downloading IPv6 NAT Masquerading Fix patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+           
+          echo ">>> Validating IPv6 NAT Fix patch..."
+          test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
+          head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
+            echo "❌ Not a valid patch file. First lines:"
+            head -n 20 "${PATCH_FILE}"
+            exit 1
+          }
+           
+          echo ">>> Applying IPv6 NAT Fix patch..."
+          patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
+           
+          echo ">>> Verifying IPv6 NAT Fix injection..."
+          if [ -f "net/ipv6/netfilter/ip6table_nat.c" ]; then
+            echo "✅ IPv6 NAT masquerading modification verified!"
+          else
+            echo "❌ CRITICAL: net/ipv6/netfilter/ip6table_nat.c missing!"
+            exit 1
+          fi
+           
+          rm -f "${PATCH_FILE}"
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       - name: ⚡ Apply WildKernels Memory, I/O & CPU Optimizations
         if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
@@ -629,9 +747,24 @@ jobs:
             "use_unlikely_wrap_cpufreq.patch"
           )
           for p in "${PATCHES[@]}"; do
-            echo " -> Fetching and applying ${p}..."
-            curl -LSs "${BASE_URL}/${p}" -o temp.patch
-            patch -p1 --forward --fuzz=2 < temp.patch || echo "⚠️ Patch ${p} had fuzz or failed to apply cleanly, continuing..."
+            echo "----------------------------------------------------"
+            echo ">>> [${p}] Downloading patch..."
+            curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/${p}" -o "temp.patch"
+             
+            echo ">>> [${p}] Validating structure..."
+            test -s "temp.patch" || { echo "❌ ${p} is empty!"; exit 1; }
+            head -n 1 "temp.patch" | grep -qE '^(diff --git|From )' || {
+              echo "❌ ${p} is not a valid diff. First lines:"
+              head -n 10 "temp.patch"
+              exit 1
+            }
+
+            echo ">>> [${p}] Applying..."
+            if patch -p1 --fuzz=2 --forward < "temp.patch"; then
+              echo "✅ [${p}] successfully applied!"
+            else
+              echo "⚠️ [${p}] failed clean apply or had fuzz conflicts."
+            fi
             rm -f temp.patch
           done
           find . -name "*.orig" -delete -o -name "*.rej" -delete
@@ -642,11 +775,27 @@ jobs:
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-          echo ">>> Fetching and applying ZeroMount path redirection patches..."
+          echo ">>> Cloning Super-Builders repository for ZeroMount patch..."
           git clone --depth=1 https://github.com/jimsterino98/Super-Builders.git temp_zeromount
           ZM_PATCH=$(find temp_zeromount -name "60_zeromount-android13-5.15.patch" | head -n 1)
+           
           if [ -f "$ZM_PATCH" ]; then
-            patch -p1 --forward < "$ZM_PATCH" || true
+            echo ">>> Validating ZeroMount patch..."
+            test -s "$ZM_PATCH" || { echo "❌ ZeroMount patch is empty"; exit 1; }
+            head -n 1 "$ZM_PATCH" | grep -qE '^(diff --git|From )' || { echo "❌ ZeroMount diff format invalid"; exit 1; }
+            echo ">>> Applying ZeroMount patch..."
+            patch -p1 --fuzz=1 --forward < "$ZM_PATCH"
+             
+            echo ">>> Verifying ZeroMount injection..."
+            if grep -q "zeromount" fs/proc/task_mmu.c; then
+              echo "✅ ZeroMount path redirection subsystem verified!"
+            else
+              echo "❌ CRITICAL: Expected ZeroMount hooks missing in task_mmu.c!"
+              exit 1
+            fi
+          else
+            echo "❌ CRITICAL: Could not find 60_zeromount-android13-5.15.patch in cloned repo!"
+            exit 1
           fi
           rm -rf temp_zeromount
           
@@ -654,6 +803,7 @@ jobs:
           if [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_ZEROMOUNT=y" >> "$DEFCONFIG_FILE"
           fi
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       # --- RESUME CORE BUILD PIPELINE ---
 
