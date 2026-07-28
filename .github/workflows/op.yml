@@ -116,6 +116,11 @@ on:
         description: 'Include custom.config?'
         type: boolean
         default: true
+      CUSTOM_CONFIG_URL:
+        description: 'URL for custom.config'
+        required: false
+        type: string
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
 
       # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
@@ -140,10 +145,9 @@ jobs:
       ANDROID_MAJOR_VERSION: t
       ARCH: arm64
       SUBARCH: arm64
-      # --- STATIC CONFIG URLS MOVED HERE TO STAY UNDER 25 INPUT LIMIT ---
+      # --- STATIC CONFIG URLS (Keep these two here to stay under 25 limit) ---
       PERF_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
       NETHUNTER_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
-      CUSTOM_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
 
     steps:
       - name: 🧹 Free Disk Space
@@ -362,7 +366,7 @@ jobs:
             download_config "${{ env.NETHUNTER_CONFIG_URL }}" "nethunter.config"
           fi
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ]; then
-            download_config "${{ env.CUSTOM_CONFIG_URL }}" "custom.config"
+            download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
           fi
 
       - name: 📥 Fetch & Apply DroidSpaces Patch
