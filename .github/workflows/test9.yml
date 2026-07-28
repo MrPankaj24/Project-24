@@ -66,9 +66,9 @@ on:
         type: string
         default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
 
-      # --- 4. SECURITY & FEATURE PATCH CHECKBOXES ---
-      ENABLE_BBG:
-        description: 'Inject Baseband Guard (BBG Cellular Security)?'
+      # --- 4. FEATURE & WILDKERNELS MULTI-PATCH SUITE ---
+      ENABLE_WILDKERNELS_MULTI:
+        description: 'Apply WildKernels Multi-Suite (BBG, Opts, BBRv3, Unicode, Net Schedulers, IPv6 NAT, CRCs)?'
         type: boolean
         default: true
       ENABLE_REKERNEL:
@@ -87,26 +87,6 @@ on:
         description: 'Apply Clang-20/22 sizeof-pointer-memaccess OVT Touchscreen Fix?'
         type: boolean
         default: false
-      ENABLE_CECS_PATCH:
-        description: 'Apply Disable CECs+ Patch?'
-        type: boolean
-        default: true
-      ENABLE_UNICODE_FIX:
-        description: 'Apply Unicode Fix (Prevent path traversal & root detection)?'
-        type: boolean
-        default: true
-      ENABLE_NET_SCHEDULERS:
-        description: 'Inject missing CAKE & PIE Qdisc Net Schedulers?'
-        type: boolean
-        default: true
-      ENABLE_IPSET_IPV6_NAT:
-        description: 'Apply IPv6 NAT Masquerading Fix Patch?'
-        type: boolean
-        default: true
-      ENABLE_KERNEL_OPTS:
-        description: 'Apply WildKernels Memory, I/O, & CPU Scheduler Optimizations?'
-        type: boolean
-        default: true
       ENABLE_ZEROMOUNT:
         description: 'Apply ZeroMount Path Redirection Subsystem?'
         type: boolean
@@ -460,8 +440,10 @@ jobs:
           patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
           rm -rf temp_patch_repo
 
+      # --- WILDKERNELS MULTI-SUITE STEPS ---
+
       - name: 🔒 Inject Baseband Guard (BBG)
-        if: github.event.inputs.ENABLE_BBG == 'true'
+        if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Setting up Baseband Guard..."
@@ -507,7 +489,7 @@ jobs:
           find drivers/input/touchscreen/ovt/ -type f -name "*.c" -exec sed -i 's/sizeof(tcm_hcd->print_buf)/SEC_CMD_STR_LEN/g' {} +
 
       - name: 🛑 Apply CRCs Disable Patch
-        if: github.event.inputs.ENABLE_CECS_PATCH == 'true'
+        if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -540,6 +522,7 @@ jobs:
           rm -f "${PATCH_FILE}"
 
       - name: 🌐 Apply BBRv3 TCP Congestion Control Source Patch
+        if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -548,7 +531,7 @@ jobs:
           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android13-5.15.patch"
           PATCH_FILE="bbrv3.patch"
 
-          echo ">>> Downloading default BBRv3 C source patch..."
+          echo ">>> Downloading BBRv3 C source patch..."
           curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
 
           echo ">>> Validating patch..."
@@ -574,7 +557,7 @@ jobs:
           find . -name "*.orig" -delete -o -name "*.rej" -delete
 
       - name: 🛡️ Apply Unicode Detection Bypass Fix
-        if: github.event.inputs.ENABLE_UNICODE_FIX == 'true'
+        if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -585,7 +568,7 @@ jobs:
           rm -f unicode_fix.patch
 
       - name: 🌐 Enable CAKE & PIE Qdisc Net Schedulers
-        if: github.event.inputs.ENABLE_NET_SCHEDULERS == 'true'
+        if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -601,7 +584,7 @@ jobs:
           fi
 
       - name: 🛡️ Apply IPv6 NAT Masquerading Fix Patch
-        if: github.event.inputs.ENABLE_IPSET_IPV6_NAT == 'true'
+        if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -612,7 +595,7 @@ jobs:
           rm -f ipv6_nat.patch
 
       - name: ⚡ Apply WildKernels Memory, I/O & CPU Optimizations
-        if: github.event.inputs.ENABLE_KERNEL_OPTS == 'true'
+        if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -671,6 +654,8 @@ jobs:
           if [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_ZEROMOUNT=y" >> "$DEFCONFIG_FILE"
           fi
+
+      # --- RESUME CORE BUILD PIPELINE ---
 
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
@@ -803,7 +788,7 @@ jobs:
             * **Root Stealth:** Integrated with KernelSU / SUSFS / ZeroMount / Unicode bypass to evade detection.
             * **Cellular Security:** Baseband Guard (BBG) blocks malicious cellular network attacks.
             * **Virtualization & Sync:** Full kernel-level support for DroidSpaces containers and NTSync primitives.
-            * **Network Enhancements:** Default BBRv3 TCP congestion control alongside CAKE/PIE Qdiscs and IPv6 NAT.
+            * **Network Enhancements:** BBRv3 TCP congestion control alongside CAKE/PIE Qdiscs and IPv6 NAT.
             * **Background Optimization:** Re:Kernel integrated for zero-lag background app freezing.
             * **General Tunings:** Baked with WildKernels memory, I/O, CPU scheduler, and wakelock optimizations.
             * **Build System:** Compiled with ccache acceleration and ThinLTO optimizations.
