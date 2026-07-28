@@ -7,7 +7,7 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      # --- BASE KERNEL CONFIGURATION ---
+      # --- 1. BASE KERNEL CONFIGURATION ---
       KERNEL_SOURCE:
         description: 'Kernel Source URL'
         required: true
@@ -24,7 +24,7 @@ on:
         type: string
         default: 'm14x_defconfig'
       
-      # --- TOOLCHAIN & PERFORMANCE ---
+      # --- 2. TOOLCHAIN & PERFORMANCE ---
       compiler:
         description: 'Compiler Toolchain'
         required: true
@@ -38,13 +38,8 @@ on:
         required: true
         type: boolean
         default: true
-      build_type:
-        description: 'Build system'
-        required: true
-        type: string
-        default: 'make'
 
-      # --- KERNELSU & ROOT STEALTH TOGGLES ---
+      # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
       ENABLE_KSU:
         description: 'Inject KernelSU / ReSukiSU?'
         type: boolean
@@ -74,7 +69,7 @@ on:
         type: string
         default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
 
-      # --- SECURITY & FEATURE PATCH CHECKBOXES ---
+      # --- 4. SECURITY & FEATURE PATCH CHECKBOXES ---
       ENABLE_BBG:
         description: 'Inject Baseband Guard (BBG Cellular Security)?'
         type: boolean
@@ -100,7 +95,7 @@ on:
         type: boolean
         default: true
 
-      # --- CONFIGURATION TOGGLES ---
+      # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
         description: 'Bake generated su.config (SUSFS & Anti-Root Bypass)?'
         type: boolean
@@ -113,31 +108,16 @@ on:
         description: 'Include perf.config?'
         type: boolean
         default: false
-      PERF_CONFIG_URL:
-        description: 'URL for perf.config'
-        required: false
-        type: string
-        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
       ENABLE_NETHUNTER_CONFIG:
         description: 'Include nethunter.config?'
         type: boolean
         default: false
-      NETHUNTER_CONFIG_URL:
-        description: 'URL for nethunter.config'
-        required: false
-        type: string
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
       ENABLE_CUSTOM_CONFIG:
         description: 'Include custom.config?'
         type: boolean
         default: true
-      CUSTOM_CONFIG_URL:
-        description: 'URL for custom.config'
-        required: false
-        type: string
-        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
 
-      # --- RELEASE OPTIONS ---
+      # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
         description: 'Create a GitHub Release?'
         required: true
@@ -160,6 +140,10 @@ jobs:
       ANDROID_MAJOR_VERSION: t
       ARCH: arm64
       SUBARCH: arm64
+      # --- STATIC CONFIG URLS MOVED HERE TO STAY UNDER 25 INPUT LIMIT ---
+      PERF_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
+      NETHUNTER_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
+      CUSTOM_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
 
     steps:
       - name: 🧹 Free Disk Space
@@ -190,9 +174,8 @@ jobs:
           kmod rsync clang dwarves pahole ccache device-tree-compiler zlib1g-dev \
           libc6-dev-i386 cmake ninja-build file patch sudo
 
-      # --- ADVANCED CCACHE CONFIGURATION & DETERMINISM (From Blueprint) ---
       - name: ⚙️ Export ccache + determinism
-        if: github.event.inputs.cache == 'true' && github.event.inputs.build_type == 'make'
+        if: github.event.inputs.cache == 'true'
         run: |
           CACHE_DIR="${{ github.workspace }}/.ccache"
           mkdir -p "$CACHE_DIR"
@@ -226,17 +209,17 @@ jobs:
           fi
 
       - name: ♻️ Restore ccache
-        if: github.event.inputs.cache == 'true' && github.event.inputs.build_type == 'make'
+        if: github.event.inputs.cache == 'true'
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ runner.os }}-${{ github.event.inputs.build_type }}-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
+          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ runner.os }}-${{ github.event.inputs.build_type }}-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}
-            ccache-${{ runner.os }}-${{ github.event.inputs.build_type }}-${{ github.event.inputs.compiler }}-
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-
 
       - name: 🔗 Ensure ccache is masked into PATH
-        if: github.event.inputs.cache == 'true' && github.event.inputs.build_type == 'make'
+        if: github.event.inputs.cache == 'true'
         run: |
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           echo "CC=ccache clang" >> $GITHUB_ENV
@@ -373,13 +356,13 @@ jobs:
             fi
           }
           if [ "${{ github.event.inputs.ENABLE_PERF_CONFIG }}" == "true" ]; then
-            download_config "${{ github.event.inputs.PERF_CONFIG_URL }}" "perf.config"
+            download_config "${{ env.PERF_CONFIG_URL }}" "perf.config"
           fi
           if [ "${{ github.event.inputs.ENABLE_NETHUNTER_CONFIG }}" == "true" ]; then
-            download_config "${{ github.event.inputs.NETHUNTER_CONFIG_URL }}" "nethunter.config"
+            download_config "${{ env.NETHUNTER_CONFIG_URL }}" "nethunter.config"
           fi
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ]; then
-            download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
+            download_config "${{ env.CUSTOM_CONFIG_URL }}" "custom.config"
           fi
 
       - name: 📥 Fetch & Apply DroidSpaces Patch
