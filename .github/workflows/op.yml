@@ -495,35 +495,33 @@ jobs:
           echo ">>> Patching OVT touchscreen driver for newer Clang compatibility..."
           find drivers/input/touchscreen/ovt/ -type f -name "*.c" -exec sed -i 's/sizeof(tcm_hcd->print_buf)/SEC_CMD_STR_LEN/g' {} +
 
-      - name: 🛑 Apply Disable CECs+ Patch
+      - name: 🛑 Apply CRCs Disable Patch
         if: github.event.inputs.ENABLE_CECS_PATCH == 'true'
         shell: bash
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
 
-          PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/1330/test/Disable_CECs%2B.patch"
-          PATCH_FILE="disable_cecs.patch"
+          PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/CRCs_disable.patch"
+          PATCH_FILE="CRCs_disable.patch"
 
-          echo ">>> Downloading Disable CECs+ patch..."
-          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 \
-            "${PATCH_URL}" -o "${PATCH_FILE}"
+          echo ">>> Downloading CRCs_disable patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
 
-          echo ">>> Validating patch file..."
+          echo ">>> Validating patch..."
           test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
           head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
-            echo "❌ Downloaded content is not a valid patch."
-            echo ">>> First 20 lines:"
+            echo "❌ Not a valid patch file. First lines:"
             head -n 20 "${PATCH_FILE}"
             exit 1
           }
 
-          echo ">>> Checking patch applicability..."
+          echo ">>> Checking applicability..."
           if git apply --check "${PATCH_FILE}"; then
             git apply "${PATCH_FILE}"
-            echo "✅ Disable CECs+ patch applied successfully."
+            echo "✅ CRCs_disable patch applied successfully."
           else
-            echo "❌ Patch did not apply cleanly."
+            echo "❌ Patch failed to apply cleanly."
             git apply --check --verbose "${PATCH_FILE}" || true
             exit 1
           fi
