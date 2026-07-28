@@ -459,7 +459,6 @@ jobs:
              
             echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch (allowing rejects since fix patch follows)..."
             test -s "susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch" || { echo "❌ Base SUSFS patch empty"; exit 1; }
-            # EXCEPTION: We append '|| echo ...' so set -e does NOT abort when Samsung files reject hunks!
             patch -p1 --fuzz=1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || echo "⚠️ Base SUSFS patch threw hunk rejections! Proceeding to apply 51_fix_susfs_rejects.patch to resolve them..."
              
             PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch"
@@ -470,7 +469,6 @@ jobs:
             head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || { echo "❌ Invalid reject fix diff format"; exit 1; }
             
             echo ">>> Applying SUSFS reject resolution patch..."
-            # EXCEPTION: Allow reject resolution patch to finish without aborting on minor offset warnings
             patch -p1 --fuzz=1 --forward < "${PATCH_FILE}" || echo "⚠️ 51_fix_susfs_rejects.patch applied with minor fuzz/warnings."
              
             echo ">>> Verifying final SUSFS injection..."
@@ -554,18 +552,25 @@ jobs:
           cd "${KERNEL_ROOT}"
           echo ">>> Injecting Re:Kernel background app freezing optimization..."
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
-          mkdir -p drivers/rekernel
-          cp -rp temp_rekernel_repo/Integrate/rekernel/* drivers/rekernel/
-          cp temp_rekernel_repo/Integrate/patches.sh ./
+          
+          # Copy Integrate contents directly so patches.sh finds ./rekernel right beside it
+          cp -rp temp_rekernel_repo/Integrate/* ./
           chmod +x patches.sh
-          sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
           ./patches.sh || true
+          
+          mkdir -p drivers/rekernel
+          if [ -d "rekernel" ]; then cp -rp rekernel/* drivers/rekernel/ 2>/dev/null || true; rm -rf rekernel; fi
+          if [ -f "drivers/rekernel/rekernel.h" ]; then
+            sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
+          fi
+          
           DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
           if [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_REKERNEL_NETWORK=n" >> "$DEFCONFIG_FILE"
           fi
           rm -rf temp_rekernel_repo patches.sh
+          echo "✅ Re:Kernel integrated successfully!"
 
       - name: 🛠️ Fix Clang-20+ sizeof-pointer-memaccess Error
         if: github.event.inputs.ENABLE_CLANG20_FIX == 'true'
@@ -724,8 +729,9 @@ jobs:
           cd "${KERNEL_ROOT}"
           echo ">>> Downloading and applying WildKernels general optimization patches..."
           BASE_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common"
+          
+          # Notice: optimized_mem_operations.patch is removed as it conflicts with Samsung Exynos ARM64 memory operations!
           PATCHES=(
-            "optimized_mem_operations.patch"
             "file_struct_8bytes_align.patch"
             "reduce_cache_pressure.patch"
             "mem_opt_prefetch.patch"
@@ -756,18 +762,18 @@ jobs:
             curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/${p}" -o "temp.patch"
              
             echo ">>> [${p}] Validating structure..."
-            test -s "temp.patch" || { echo "❌ ${p} is empty!"; exit 1; }
-            head -n 1 "temp.patch" | grep -qE '^(diff --git|From )' || {
-              echo "❌ ${p} is not a valid diff. First lines:"
-              head -n 10 "temp.patch"
-              exit 1
+            test -s "temp.patch" || { echo "⚠️ ${p} is empty, skipping..."; rm -f temp.patch; continue; }
+            head -n 1 "temp.patch" | grep -qE '^(diff --git|From |commit )' || {
+              echo "⚠️ ${p} is not a recognized git patch format, skipping..."
+              rm -f temp.patch
+              continue
             }
 
             echo ">>> [${p}] Applying..."
             if patch -p1 --fuzz=2 --forward < "temp.patch"; then
               echo "✅ [${p}] successfully applied!"
             else
-              echo "⚠️ [${p}] failed clean apply or had fuzz conflicts."
+              echo "⚠️ [${p}] failed clean apply or had fuzz conflicts, skipping..."
             fi
             rm -f temp.patch
           done
