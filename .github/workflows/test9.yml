@@ -553,16 +553,13 @@ jobs:
           echo ">>> Injecting Re:Kernel background app freezing optimization..."
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
           
-          # Fix: Copy Integrate structure cleanly so patches.sh locates rekernel/
+          # Copy Integrate structure cleanly so patches.sh locates rekernel/
           cp -rp temp_rekernel_repo/Integrate/* ./
           chmod +x patches.sh
           ./patches.sh || true
           
           mkdir -p drivers/rekernel
-          if [ -d "rekernel" ]; then
-            cp -rp rekernel/* drivers/rekernel/ 2>/dev/null || true
-            rm -rf rekernel
-          fi
+          if [ -d "rekernel" ]; then cp -rp rekernel/* drivers/rekernel/ 2>/dev/null || true; rm -rf rekernel; fi
           if [ -f "drivers/rekernel/rekernel.h" ]; then
             sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
           fi
@@ -747,15 +744,8 @@ jobs:
           # 2. Apply alarmtimer sleep tuning
           sed -i 's/pm_wakeup_event(dev, 2 \* MSEC_PER_SEC);/pm_wakeup_event(dev, ktime_to_ms(min) + 1);/' kernel/time/alarmtimer.c || true
 
-          # 3. Apply clear_page patch with Linux 5.15 symbol fixes
-          CLEAR_PAGE_URL="${BASE_URL}/clear_page_16bytes_align.patch"
-          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${CLEAR_PAGE_URL}" -o "clear_page.patch"
-          if [ -s "clear_page.patch" ]; then
-            sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START(__pi_clear_page)/' clear_page.patch | patch -p1 --fuzz=2 --forward || echo "⚠️ clear_page patch skipped"
-            rm -f clear_page.patch
-          fi
-
-          # 4. Standard clean-applying WildKernels patch suite
+          # Notice: optimized_mem_operations.patch and clear_page_16bytes_align.patch are removed as they conflict with Samsung Exynos ARM64 assembly!
+          # 3. Standard clean-applying WildKernels patch suite
           PATCHES=(
             "file_struct_8bytes_align.patch"
             "reduce_cache_pressure.patch"
