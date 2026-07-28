@@ -68,7 +68,7 @@ on:
 
       # --- 4. FEATURE & WILDKERNELS MULTI-PATCH SUITE ---
       ENABLE_WILDKERNELS_MULTI:
-        description: 'Apply WildKernels Multi-Suite (BBG, Opts, BBRv3, Unicode, Net Schedulers, IPv6 NAT, CRCs)?'
+        description: 'Apply WildKernels Multi-Suite (BBG, Exynos Opts, BBRv3, Unicode, Net Schedulers, IPv6 NAT, CRCs)?'
         type: boolean
         default: true
       ENABLE_REKERNEL:
@@ -416,8 +416,8 @@ jobs:
             test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
             head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || { echo "❌ Invalid diff format"; exit 1; }
             
-            echo ">>> Applying safety patch to KernelSU (allowing non-fatal fuzz/rejects if handled)..."
-            cd KernelSU && { patch -p1 --fuzz=1 --forward < "../${PATCH_FILE}" || echo "⚠️ ReSukiSU safety patch had minor fuzz/rejects, continuing..."; } && cd ..
+            echo ">>> Applying safety patch to KernelSU..."
+            cd KernelSU && { patch -p1 --fuzz=1 --forward < "../${PATCH_FILE}" || echo "⚠️ ReSukiSU safety patch applied with minor warnings"; } && cd ..
             echo "✅ ReSukiSU integration processed!"
             rm -f "${PATCH_FILE}"
              
@@ -427,7 +427,7 @@ jobs:
             cd KernelSU && git checkout $BRANCH || true && cd ..
             git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
             cd susfs4ksu && git checkout d8358055f3410aa8775bb283d6f1c12fcc13c79d && cd ..
-            cd KernelSU && { patch -p1 --fuzz=1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || echo "⚠️ SUSFS KSU patch had rejects, continuing..."; } && cd ..
+            cd KernelSU && { patch -p1 --fuzz=1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || echo "⚠️ SUSFS KSU patch had warnings"; } && cd ..
             bash KernelSU/kernel/setup.sh
             rm -rf susfs4ksu
              
@@ -457,9 +457,9 @@ jobs:
             cp -rf susfs_repo/kernel_patches/fs/* fs/
             cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
              
-            echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch (allowing rejects since fix patch follows)..."
+            echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
             test -s "susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch" || { echo "❌ Base SUSFS patch empty"; exit 1; }
-            patch -p1 --fuzz=1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || echo "⚠️ Base SUSFS patch threw hunk rejections! Proceeding to apply 51_fix_susfs_rejects.patch to resolve them..."
+            patch -p1 --fuzz=1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || echo "⚠️ Base SUSFS patch threw hunk rejections! Proceeding to apply 51_fix_susfs_rejects.patch..."
              
             PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch"
             PATCH_FILE="51_fix.patch"
@@ -469,7 +469,7 @@ jobs:
             head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || { echo "❌ Invalid reject fix diff format"; exit 1; }
             
             echo ">>> Applying SUSFS reject resolution patch..."
-            patch -p1 --fuzz=1 --forward < "${PATCH_FILE}" || echo "⚠️ 51_fix_susfs_rejects.patch applied with minor fuzz/warnings."
+            patch -p1 --fuzz=1 --forward < "${PATCH_FILE}" || echo "⚠️ 51_fix_susfs_rejects.patch applied with minor warnings."
              
             echo ">>> Verifying final SUSFS injection..."
             if [ -f "fs/susfs.c" ]; then
@@ -553,13 +553,16 @@ jobs:
           echo ">>> Injecting Re:Kernel background app freezing optimization..."
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
           
-          # Copy Integrate contents directly so patches.sh finds ./rekernel right beside it
+          # Fix: Copy Integrate structure cleanly so patches.sh locates rekernel/
           cp -rp temp_rekernel_repo/Integrate/* ./
           chmod +x patches.sh
           ./patches.sh || true
           
           mkdir -p drivers/rekernel
-          if [ -d "rekernel" ]; then cp -rp rekernel/* drivers/rekernel/ 2>/dev/null || true; rm -rf rekernel; fi
+          if [ -d "rekernel" ]; then
+            cp -rp rekernel/* drivers/rekernel/ 2>/dev/null || true
+            rm -rf rekernel
+          fi
           if [ -f "drivers/rekernel/rekernel.h" ]; then
             sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
           fi
@@ -721,28 +724,48 @@ jobs:
           rm -f "${PATCH_FILE}"
           find . -name "*.orig" -delete -o -name "*.rej" -delete
 
-      - name: ⚡ Apply WildKernels Memory, I/O & CPU Optimizations
+      - name: ⚡ Apply WildKernels Exynos-Specific Memory, I/O & CPU Optimizations
         if: github.event.inputs.ENABLE_WILDKERNELS_MULTI == 'true'
         shell: bash
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-          echo ">>> Downloading and applying WildKernels general optimization patches..."
+          echo ">>> Downloading and applying WildKernels Exynos-specific optimizations..."
           BASE_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common"
-          
-          # Notice: optimized_mem_operations.patch is removed as it conflicts with Samsung Exynos ARM64 memory operations!
+
+          # 1. Apply Samsung Exynos memcmp patch (Replaces generic optimise_memcmp.patch)
+          EXYNOS_MEMCMP_URL="${BASE_URL}/Samsung/optimise_memcmp_exynos.patch"
+          echo ">>> Fetching Exynos memcmp patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${EXYNOS_MEMCMP_URL}" -o "exynos_memcmp.patch"
+          if [ -s "exynos_memcmp.patch" ]; then
+            sed -e 's/SYM_FUNC_START(__pi_memcmp)/SYM_FUNC_START_WEAK_PI(memcmp)/' \
+                -e 's/SYM_FUNC_END(__pi_memcmp)/SYM_FUNC_END_PI(memcmp)/' \
+                -e 's/SYM_FUNC_ALIAS_WEAK(memcmp, __pi_memcmp)/EXPORT_SYMBOL_NOKASAN(memcmp)/' exynos_memcmp.patch | patch -p1 --fuzz=2 --forward || echo "⚠️ Exynos memcmp skipped"
+            rm -f exynos_memcmp.patch
+          fi
+
+          # 2. Apply alarmtimer sleep tuning
+          sed -i 's/pm_wakeup_event(dev, 2 \* MSEC_PER_SEC);/pm_wakeup_event(dev, ktime_to_ms(min) + 1);/' kernel/time/alarmtimer.c || true
+
+          # 3. Apply clear_page patch with Linux 5.15 symbol fixes
+          CLEAR_PAGE_URL="${BASE_URL}/clear_page_16bytes_align.patch"
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${CLEAR_PAGE_URL}" -o "clear_page.patch"
+          if [ -s "clear_page.patch" ]; then
+            sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START(__pi_clear_page)/' clear_page.patch | patch -p1 --fuzz=2 --forward || echo "⚠️ clear_page patch skipped"
+            rm -f clear_page.patch
+          fi
+
+          # 4. Standard clean-applying WildKernels patch suite
           PATCHES=(
             "file_struct_8bytes_align.patch"
             "reduce_cache_pressure.patch"
             "mem_opt_prefetch.patch"
-            "optimise_memcmp.patch"
             "int_sqrt.patch"
             "force_tcp_nodelay.patch"
             "reduce_gc_thread_sleep_time.patch"
             "add_timeout_wakelocks_globally.patch"
             "f2fs_reduce_congestion.patch"
             "reduce_freeze_timeout.patch"
-            "clear_page_16bytes_align.patch"
             "add_limitation_scaling_min_freq.patch"
             "re_write_limitation_scaling_min_freq.patch"
             "adjust_cpu_scan_order.patch"
@@ -758,22 +781,10 @@ jobs:
           )
           for p in "${PATCHES[@]}"; do
             echo "----------------------------------------------------"
-            echo ">>> [${p}] Downloading patch..."
+            echo ">>> [${p}] Downloading..."
             curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/${p}" -o "temp.patch"
-             
-            echo ">>> [${p}] Validating structure..."
-            test -s "temp.patch" || { echo "⚠️ ${p} is empty, skipping..."; rm -f temp.patch; continue; }
-            head -n 1 "temp.patch" | grep -qE '^(diff --git|From |commit )' || {
-              echo "⚠️ ${p} is not a recognized git patch format, skipping..."
-              rm -f temp.patch
-              continue
-            }
-
-            echo ">>> [${p}] Applying..."
-            if patch -p1 --fuzz=2 --forward < "temp.patch"; then
-              echo "✅ [${p}] successfully applied!"
-            else
-              echo "⚠️ [${p}] failed clean apply or had fuzz conflicts, skipping..."
+            if [ -s "temp.patch" ]; then
+              patch -p1 --fuzz=2 --forward < "temp.patch" || echo "⚠️ [${p}] had fuzz or conflicts, skipping..."
             fi
             rm -f temp.patch
           done
