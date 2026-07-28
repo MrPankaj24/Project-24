@@ -1,4 +1,4 @@
-name: 🏗️ test Project24 Custom Kernel Build test (Blueprint Edition)
+name: 🏗️ Project24 Custom Kernel Build test (Blueprint Edition)
 
 permissions:
   contents: write
@@ -25,19 +25,16 @@ on:
         default: 'm14x_defconfig'
        
       # --- 2. TOOLCHAIN & PERFORMANCE ---
-      compiler:
-        description: 'Compiler Toolchain'
+      TOOLCHAIN_CONFIG:
+        description: 'Compiler & ccache setup'
         required: true
         type: choice
         options:
-          - llvm22
-          - google-clang
-        default: llvm22
-      cache:
-        description: 'Enable ccache acceleration'
-        required: true
-        type: boolean
-        default: true
+          - llvm22-ccache
+          - llvm22-no-cache
+          - google-clang-ccache
+          - google-clang-no-cache
+        default: llvm22-ccache
 
       # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
       ENABLE_KSU:
@@ -94,24 +91,16 @@ on:
         description: 'Apply Disable CECs+ Patch?'
         type: boolean
         default: true
-      ENABLE_BBRV3:
-        description: 'Apply BBRv3 TCP Congestion Control Patch?'
-        type: boolean
-        default: true
       ENABLE_UNICODE_FIX:
         description: 'Apply Unicode Fix (Prevent path traversal & root detection)?'
         type: boolean
         default: true
       ENABLE_NET_SCHEDULERS:
-        description: 'Enable CAKE, PIE, & FQ Net Schedulers?'
+        description: 'Inject missing CAKE & PIE Qdisc Net Schedulers?'
         type: boolean
         default: true
       ENABLE_IPSET_IPV6_NAT:
-        description: 'Enable IP Set & Advanced IPv6 NAT Firewall Support?'
-        type: boolean
-        default: true
-      ENABLE_TTL_TARGET:
-        description: 'Enable TTL & HL Packet Manipulation Targets?'
+        description: 'Apply IPv6 NAT Masquerading Fix Patch?'
         type: boolean
         default: true
       ENABLE_KERNEL_OPTS:
@@ -125,7 +114,7 @@ on:
        
       # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
-        description: 'Bake generated su.config (SUSFS & Anti-Root Bypass)?'
+        description: 'Bake generated su.config (SUSFS & KSU Core Toggles)?'
         type: boolean
         default: true
       ENABLE_SELINUX_PERMISSIVE:
@@ -141,7 +130,7 @@ on:
         type: boolean
         default: false
       ENABLE_CUSTOM_CONFIG:
-        description: 'Include custom.config?'
+        description: 'Include custom.config (Your custom feature suite)?'
         type: boolean
         default: true
       CUSTOM_CONFIG_URL:
@@ -165,7 +154,7 @@ on:
 
 jobs:
   build-kernel:
-    name: 🏗️ Build (${{ github.event.inputs.DEVICE_DEFCONFIG }} | ${{ github.event.inputs.compiler }})
+    name: 🏗️ Build (${{ github.event.inputs.DEVICE_DEFCONFIG }} | ${{ github.event.inputs.TOOLCHAIN_CONFIG }})
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -179,7 +168,6 @@ jobs:
       ANDROID_MAJOR_VERSION: t
       ARCH: arm64
       SUBARCH: arm64
-      # --- STATIC CONFIG URLS ---
       PERF_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
       NETHUNTER_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
 
@@ -213,7 +201,7 @@ jobs:
           libc6-dev-i386 cmake ninja-build file patch sudo
 
       - name: ⚙️ Export ccache + determinism
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.TOOLCHAIN_CONFIG, 'ccache')
         run: |
           CACHE_DIR="${{ github.workspace }}/.ccache"
           mkdir -p "$CACHE_DIR"
@@ -247,17 +235,17 @@ jobs:
           fi
 
       - name: ♻️ Restore ccache
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.TOOLCHAIN_CONFIG, 'ccache')
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
+          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.TOOLCHAIN_CONFIG }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}
-            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.TOOLCHAIN_CONFIG }}-${{ github.event.inputs.KERNEL_BRANCH }}
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.TOOLCHAIN_CONFIG }}-
 
       - name: 🔗 Ensure ccache is masked into PATH
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.TOOLCHAIN_CONFIG, 'ccache')
         run: |
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           echo "CC=ccache clang" >> $GITHUB_ENV
@@ -274,20 +262,24 @@ jobs:
           echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} ${{ github.event.inputs.KERNEL_SOURCE }} ${KERNEL_ROOT}
 
-      - name: 🔧 Setup Toolchain (${{ github.event.inputs.compiler }})
+      - name: 🔧 Setup Toolchain (${{ github.event.inputs.TOOLCHAIN_CONFIG }})
         run: |
           set -euo pipefail
           mkdir -p ${GITHUB_WORKSPACE}/toolchains
           cd ${GITHUB_WORKSPACE}/toolchains
            
-          if [ "${{ github.event.inputs.compiler }}" = "llvm22" ]; then
+          if [[ "${{ github.event.inputs.TOOLCHAIN_CONFIG }}" == *"llvm22"* ]]; then
             echo ">>> Installing LLVM 22 from official APT repository..."
             wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 22
             sudo apt-get install -y clang-22 lld-22 llvm-22
             sudo ln -sf /usr/bin/clang-22 /usr/bin/clang || true
             sudo ln -sf /usr/bin/ld.lld-22 /usr/bin/ld.lld || true
             echo "COMPILER_PATH=/usr/lib/llvm-22/bin:/usr/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=ccache clang-22" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.TOOLCHAIN_CONFIG }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang-22" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang-22" >> $GITHUB_ENV
+            fi
           else
             echo ">>> Fetching Google Clang (r487747c - Android 14 Stable)..."
             CLANG_VER="clang-r487747c"
@@ -296,7 +288,11 @@ jobs:
             curl -L "$DL_URL" -o clang.tar.gz
             tar -xzf clang.tar.gz -C ${CLANG_VER}
             echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.TOOLCHAIN_CONFIG }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang" >> $GITHUB_ENV
+            fi
           fi
 
       - name: ⬇️ Download AOSP Kernel Build Tools
@@ -308,9 +304,9 @@ jobs:
         if: github.event.inputs.ENABLE_SU_CONFIG == 'true'
         run: |
           cd ${KERNEL_ROOT}
-          echo ">>> Generating su.config with SUSFS and Anti-Root bypasses forced to 'y'..."
+          echo ">>> Generating su.config (KSU & SUSFS specific symbols only)..."
           cat > arch/arm64/configs/su.config << 'EOF'
-          # KernelSU
+          # KernelSU Core
           CONFIG_KPROBES=y
           CONFIG_KPROBE_EVENTS=y
           CONFIG_HAVE_KPROBES=y
@@ -335,25 +331,6 @@ jobs:
           CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
           CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-
-          # Disable Samsung Anti-Root Protection
-          CONFIG_UH=n
-          CONFIG_RKP=n
-          CONFIG_KDP=n
-          CONFIG_SECURITY_DEFEX=n
-          CONFIG_PROCA=n
-          CONFIG_FIVE=n
-
-          # Force Load Kernel Modules
-          CONFIG_MODULES=y
-          CONFIG_MODULE_FORCE_LOAD=y
-          CONFIG_MODULE_UNLOAD=y
-          CONFIG_MODULE_FORCE_UNLOAD=y
-          CONFIG_MODVERSIONS=y
-          CONFIG_MODULE_SRCVERSION_ALL=n
-          CONFIG_MODULE_SIG=n
-          CONFIG_MODULE_COMPRESS=n
-          CONFIG_TRIM_UNUSED_KSYMS=n
 
           # Kallsyms & NTSync Built-in
           CONFIG_KALLSYMS=y
@@ -403,11 +380,11 @@ jobs:
             download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
           fi
 
-      - name: 📥 Fetch & Apply DroidSpaces Patch
+      - name: 📥 Fetch & Apply DroidSpaces Source Patch
         if: github.event.inputs.ENABLE_DROIDSPACE == 'true'
         run: |
           cd ${KERNEL_ROOT}
-          echo ">>> Downloading and applying DroidSpaces patch..."
+          echo ">>> Applying DroidSpaces C source patch..."
           curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_for_1330.patch" -o droidspace_1330.patch
           patch -p1 --forward < droidspace_1330.patch || true
           rm droidspace_1330.patch
@@ -473,11 +450,11 @@ jobs:
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
-      - name: 📥 Fetch & Apply NTSYNC Patches
+      - name: 📥 Fetch & Apply NTSYNC Source Patches
         if: github.event.inputs.ENABLE_NTSYNC == 'true'
         run: |
           cd ${KERNEL_ROOT}
-          echo ">>> Downloading and applying NTSYNC patches..."
+          echo ">>> Applying NTSYNC C source patches..."
           git clone https://github.com/MrPankaj24/kernel_patch.git temp_patch_repo
           patch -p1 --forward < temp_patch_repo/ntsync_base.patch || true
           patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
@@ -562,8 +539,7 @@ jobs:
 
           rm -f "${PATCH_FILE}"
 
-      - name: 🌐 Apply BBRv3 TCP Congestion Control Patch
-        if: github.event.inputs.ENABLE_BBRV3 == 'true'
+      - name: 🌐 Apply BBRv3 TCP Congestion Control Source Patch
         shell: bash
         run: |
           set -euo pipefail
@@ -572,7 +548,7 @@ jobs:
           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android13-5.15.patch"
           PATCH_FILE="bbrv3.patch"
 
-          echo ">>> Downloading BBRv3 patch..."
+          echo ">>> Downloading default BBRv3 C source patch..."
           curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
 
           echo ">>> Validating patch..."
@@ -583,7 +559,7 @@ jobs:
             exit 1
           }
 
-          echo ">>> Applying BBRv3 patch using 'patch -p1' (matching local behavior)..."
+          echo ">>> Applying BBRv3 patch using 'patch -p1'..."
           patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
 
           echo ">>> Verifying BBRv3 injection..."
@@ -594,16 +570,8 @@ jobs:
             exit 1
           fi
 
-          if grep -q "bbr3" net/ipv4/Kconfig; then
-            echo "✅ BBRv3 Kconfig entry successfully injected!"
-          else
-            echo "⚠️ WARNING: BBRv3 Kconfig entry missing. BBRv3 might not be selectable."
-          fi
-
           rm -f "${PATCH_FILE}"
           find . -name "*.orig" -delete -o -name "*.rej" -delete
-
-      # --- NEW FEATURE STEPS ADDED BELOW ---
 
       - name: 🛡️ Apply Unicode Detection Bypass Fix
         if: github.event.inputs.ENABLE_UNICODE_FIX == 'true'
@@ -611,7 +579,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-          echo ">>> Downloading and applying Unicode Bypass Fix (Prevent path traversal & root detections)..."
+          echo ">>> Downloading and applying Unicode Bypass Fix..."
           curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch" -o unicode_fix.patch
           patch -p1 --forward < unicode_fix.patch || true
           rm -f unicode_fix.patch
@@ -622,72 +590,26 @@ jobs:
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-          echo ">>> Enabling CAKE, PIE, FQ-CoDel, and FQ-PIE Net Schedulers in defconfig..."
+          echo ">>> Injecting CAKE & PIE Qdisc Schedulers into defconfig..."
           DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
           if [ -f "$DEFCONFIG_FILE" ]; then
             cat >> "$DEFCONFIG_FILE" << 'EOF'
-          CONFIG_NET_SCH_FQ=y
-          CONFIG_NET_SCH_FQ_CODEL=y
           CONFIG_NET_SCH_CAKE=y
           CONFIG_NET_SCH_PIE=y
           CONFIG_NET_SCH_FQ_PIE=y
           EOF
           fi
 
-      - name: 🛡️ Enable IP Set & IPv6 NAT Advanced Firewall Support
+      - name: 🛡️ Apply IPv6 NAT Masquerading Fix Patch
         if: github.event.inputs.ENABLE_IPSET_IPV6_NAT == 'true'
         shell: bash
         run: |
           set -euo pipefail
           cd "${KERNEL_ROOT}"
-          echo ">>> Enabling IP Set, Bitmap/Hash rules, and IPv6 NAT Masquerading..."
-          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
-          if [ -f "$DEFCONFIG_FILE" ]; then
-            cat >> "$DEFCONFIG_FILE" << 'EOF'
-          CONFIG_IP_SET=y
-          CONFIG_IP_SET_MAX=65534
-          CONFIG_IP_SET_BITMAP_IP=y
-          CONFIG_IP_SET_BITMAP_IPMAC=y
-          CONFIG_IP_SET_BITMAP_PORT=y
-          CONFIG_IP_SET_HASH_IP=y
-          CONFIG_IP_SET_HASH_IPMARK=y
-          CONFIG_IP_SET_HASH_IPPORT=y
-          CONFIG_IP_SET_HASH_IPPORTIP=y
-          CONFIG_IP_SET_HASH_IPPORTNET=y
-          CONFIG_IP_SET_HASH_IPMAC=y
-          CONFIG_IP_SET_HASH_MAC=y
-          CONFIG_IP_SET_HASH_NETPORTNET=y
-          CONFIG_IP_SET_HASH_NET=y
-          CONFIG_IP_SET_HASH_NETNET=y
-          CONFIG_IP_SET_HASH_NETPORT=y
-          CONFIG_IP_SET_HASH_NETIFACE=y
-          CONFIG_IP_SET_LIST_SET=y
-          CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
-          CONFIG_NETFILTER_XT_SET=y
-          CONFIG_IP6_NF_NAT=y
-          CONFIG_IP6_NF_TARGET_MASQUERADE=y
-          EOF
-          fi
           echo ">>> Applying IPv6 NAT Masquerading Fix patch..."
           curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/IPv6_NAT_FIX.patch" -o ipv6_nat.patch
           patch -p1 --forward < ipv6_nat.patch || true
           rm -f ipv6_nat.patch
-
-      - name: 🔀 Enable TTL & HL Packet Manipulation
-        if: github.event.inputs.ENABLE_TTL_TARGET == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "${KERNEL_ROOT}"
-          echo ">>> Enabling TTL and HL Netfilter packet manipulation targets..."
-          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
-          if [ -f "$DEFCONFIG_FILE" ]; then
-            cat >> "$DEFCONFIG_FILE" << 'EOF'
-          CONFIG_IP_NF_TARGET_TTL=y
-          CONFIG_IP6_NF_TARGET_HL=y
-          CONFIG_IP6_NF_MATCH_HL=y
-          EOF
-          fi
 
       - name: ⚡ Apply WildKernels Memory, I/O & CPU Optimizations
         if: github.event.inputs.ENABLE_KERNEL_OPTS == 'true'
@@ -750,8 +672,6 @@ jobs:
             echo "CONFIG_ZEROMOUNT=y" >> "$DEFCONFIG_FILE"
           fi
 
-      # --- RESUME CORE BUILD PIPELINE ---
-
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
           cd ${KERNEL_ROOT}
@@ -770,7 +690,7 @@ jobs:
           cd ${KERNEL_ROOT}
           mkdir -p ${OUTDIR}
            
-          # --- ABI & KMI Settings (Nuke checks from Blueprint) ---
+          # --- ABI & KMI Settings ---
           export ABI_DEFINITION=
           export KMI_SYMBOL_LIST_STRICT_MODE=0
           export SKIP_ABI_CHECKS=1
@@ -797,13 +717,13 @@ jobs:
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/custom.config" ]; then CONFIG_ARGS="$CONFIG_ARGS custom.config"; fi
            
           echo "===================================================="
-          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.compiler }}"
+          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.TOOLCHAIN_CONFIG }}"
           echo "===================================================="
            
           make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
           make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" 2>&1 | tee build.log
 
-          if [ "${{ github.event.inputs.cache }}" = "true" ]; then
+          if [[ "${{ github.event.inputs.TOOLCHAIN_CONFIG }}" == *"ccache"* ]]; then
             ccache -s
           fi
 
@@ -883,7 +803,7 @@ jobs:
             * **Root Stealth:** Integrated with KernelSU / SUSFS / ZeroMount / Unicode bypass to evade detection.
             * **Cellular Security:** Baseband Guard (BBG) blocks malicious cellular network attacks.
             * **Virtualization & Sync:** Full kernel-level support for DroidSpaces containers and NTSync primitives.
-            * **Network Enhancements:** BBRv3 TCP congestion control alongside CAKE/PIE Qdiscs and IPv6 NAT.
+            * **Network Enhancements:** Default BBRv3 TCP congestion control alongside CAKE/PIE Qdiscs and IPv6 NAT.
             * **Background Optimization:** Re:Kernel integrated for zero-lag background app freezing.
             * **General Tunings:** Baked with WildKernels memory, I/O, CPU scheduler, and wakelock optimizations.
             * **Build System:** Compiled with ccache acceleration and ThinLTO optimizations.
@@ -891,7 +811,7 @@ jobs:
             | Parameter | Value |
             | :--- | :--- |
             | **Defconfig** | `${{ github.event.inputs.DEVICE_DEFCONFIG }}` |
-            | **Toolchain** | `${{ github.event.inputs.compiler }}` |
+            | **Toolchain** | `${{ github.event.inputs.TOOLCHAIN_CONFIG }}` |
             | **Root Variant** | `${{ github.event.inputs.KSU_VARIANT }}` |
             | **Manager Branch** | `${{ github.event.inputs.MANAGER_BRANCH }}` |
             | **Kernel Branch** | `${{ github.event.inputs.KERNEL_BRANCH }}` |
@@ -919,7 +839,7 @@ jobs:
 
           SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
           KSU_VARIANT="${{ github.event.inputs.KSU_VARIANT }}"
-          COMPILER="${{ github.event.inputs.compiler }}"
+          COMPILER="${{ github.event.inputs.TOOLCHAIN_CONFIG }}"
           BRANCH="${{ github.event.inputs.KERNEL_BRANCH }}"
           RUN_NUM="${{ github.run_number }}"
 
