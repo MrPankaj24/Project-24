@@ -1,31 +1,49 @@
-name: 🏗️ tests 0000 Custom Zero BBG SUSFS (s5e8535 / M14 - Individual Configs)
+name: 🏗️ Project24 Custom Kernel Build test (Blueprint Edition)
+
+permissions:
+  contents: write
+  discussions: write
 
 on:
   workflow_dispatch:
     inputs:
+      # --- 1. BASE KERNEL CONFIGURATION ---
       KERNEL_SOURCE:
-        description: 'Kernel Source URL (Must be the actual Linux Kernel repo!)'
+        description: 'Kernel Source URL'
         required: true
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications'
+        type: string
+        default: 'https://github.com/devhunter1/android_kernel_samsung_s5e8535.git'
       KERNEL_BRANCH:
         description: 'Kernel Branch'
         required: true
-        default: 'susfs-2.2.0+zeromount+'
-      CLANG_VERSION:
-        description: 'Select Compiler Toolchain'
+        type: string
+        default: 'lineage-23.2'
+      DEVICE_DEFCONFIG:
+        description: 'Target Device Defconfig'
+        required: true
+        type: string
+        default: 'm14x_defconfig'
+      
+      # --- 2. TOOLCHAIN & PERFORMANCE ---
+      compiler:
+        description: 'Compiler Toolchain'
+        required: true
         type: choice
         options:
-          - 'clang-r487747c (AOSP - Android 14 Stable)'
-          - 'clang-r450784d (AOSP - Android 13 Release)'
-          - 'clang-22 (LLVM Official APT Repo)'
-          - 'clang-20 (Neutron Toolchain)'
-        default: 'clang-20 (Neutron Toolchain)'
-      DEVICE:
-        description: 'Device Codename'
+          - llvm22
+          - google-clang
+        default: llvm22
+      cache:
+        description: 'Enable ccache acceleration'
         required: true
-        default: 'm14x'
-        
-      # --- KERNELSU VARIANT CHOOSER ---
+        type: boolean
+        default: true
+
+      # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
+      ENABLE_KSU:
+        description: 'Inject KernelSU / ReSukiSU?'
+        type: boolean
+        default: true
       KSU_VARIANT:
         description: 'Select KernelSU Variant'
         type: choice
@@ -36,132 +54,225 @@ on:
           - 'wksu'
           - 'None'
         default: 'ReSukiSU'
-        
       MANAGER_BRANCH:
-        description: 'Manager Branch (Type "dev", "main", "canary", etc.)'
+        description: 'KernelSU Manager Branch (main, dev, canary)'
         required: true
-        default: 'dev'
-        
-      # --- INDIVIDUAL CONFIG TOGGLES ---
+        type: string
+        default: 'main'
+      ENABLE_SUSFS:
+        description: 'Apply SUSFS Root Stealth Patches?'
+        type: boolean
+        default: true
+      SUSFS_SHA:
+        description: 'SUSFS Commit SHA (Leave empty for latest)'
+        required: false
+        type: string
+        default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
+
+      # --- 4. SECURITY & FEATURE PATCH CHECKBOXES ---
+      ENABLE_BBG:
+        description: 'Inject Baseband Guard (BBG Cellular Security)?'
+        type: boolean
+        default: true
+      ENABLE_REKERNEL:
+        description: 'Inject Re:Kernel (Background App Freezing Optimization)?'
+        type: boolean
+        default: true
+      ENABLE_DROIDSPACE:
+        description: 'Apply DroidSpaces Virtualization Patch?'
+        type: boolean
+        default: true
+      ENABLE_NTSYNC:
+        description: 'Apply NTSYNC (Wine/Proton Synchronization) Patches?'
+        type: boolean
+        default: true
+      ENABLE_CLANG20_FIX:
+        description: 'Apply Clang-20/22 sizeof-pointer-memaccess OVT Touchscreen Fix?'
+        type: boolean
+        default: false
+      ENABLE_CECS_PATCH:
+        description: 'Apply Disable CECs+ Patch?'
+        type: boolean
+        default: true
+      ENABLE_BBRV3:
+        description: 'Apply BBRv3 TCP Congestion Control Patch?'
+        type: boolean
+        default: true
+      
+      # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
-        description: 'Enable Generated su.config (KernelSU, SUSFS, Anti-Root Bypass)?'
+        description: 'Bake generated su.config (SUSFS & Anti-Root Bypass)?'
         type: boolean
         default: true
-        
+      ENABLE_SELINUX_PERMISSIVE:
+        description: 'Force SELinux Permissive Mode via bootline?'
+        type: boolean
+        default: false
       ENABLE_PERF_CONFIG:
-        description: 'Enable perf.config?'
+        description: 'Include perf.config?'
         type: boolean
-        default: true
-      PERF_CONFIG_URL:
-        description: 'URL for perf.config'
-        required: false
-        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/perf.config'
-        
+        default: false
       ENABLE_NETHUNTER_CONFIG:
-        description: 'Enable nethunter.config?'
+        description: 'Include nethunter.config?'
         type: boolean
-        default: true
-      NETHUNTER_CONFIG_URL:
-        description: 'URL for nethunter.config'
-        required: false
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
-        
+        default: false
       ENABLE_CUSTOM_CONFIG:
-        description: 'Enable custom.config?'
+        description: 'Include custom.config?'
         type: boolean
         default: true
       CUSTOM_CONFIG_URL:
         description: 'URL for custom.config'
         required: false
-        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/custom.config'
+        type: string
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/test.config'
 
-      # --- RELEASE OPTIONS ---
+      # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
-        description: 'Create a GitHub Release? (Check this to publish artifacts)'
+        description: 'Create a GitHub Release?'
+        required: true
         type: boolean
-        default: false
+        default: true
+        
+      UPLOAD_TELEGRAM:
+        description: 'Upload Build to Telegram?'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
-  build:
-    name: 🏗️ Build Kernel (${{ github.event.inputs.DEVICE }})
-    runs-on: ubuntu-24.04
+  build-kernel:
+    name: 🏗️ Build (${{ github.event.inputs.DEVICE_DEFCONFIG }} | ${{ github.event.inputs.compiler }})
+    runs-on: ubuntu-latest
     timeout-minutes: 120
-    
-    # Required to allow GitHub Actions to create a Release
-    permissions:
-      contents: write
 
     env:
       KERNEL_ROOT: ${{ github.workspace }}/kernel_workspace
       OUTDIR: ${{ github.workspace }}/kernel_workspace/out
       MODULES_OUTDIR: ${{ github.workspace }}/kernel_workspace/modules_out
-      FINAL_STAGING: ${{ github.workspace }}/staging
       TARGET_SOC: s5e8535
+      SOC_NAME: s5e8535
       PLATFORM_VERSION: 15
-      ANDROID_MAJOR_VERSION: v
+      ANDROID_MAJOR_VERSION: t
       ARCH: arm64
       SUBARCH: arm64
+      # --- STATIC CONFIG URLS (Keep these two here to stay under 25 limit) ---
+      PERF_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
+      NETHUNTER_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
 
     steps:
-      - name: 📥 Checkout Workflow Repository
+      - name: 🧹 Free Disk Space
+        uses: endersonmenezes/free-disk-space@main
+        with:
+          remove_android: true
+          remove_dotnet: true
+          remove_haskell: true
+          remove_tool_cache: true
+          remove_swap: true
+          remove_packages: "azure-cli google-cloud-cli microsoft-edge-stable google-chrome-stable firefox postgresql* temurin-* *llvm* mysql* dotnet-sdk-*"
+          remove_packages_one_command: true
+          remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share/az* /usr/local/lib/node_modules /usr/local/share/chromium /usr/local/share/powershell /usr/local/julia /usr/local/aws-cli /usr/local/aws-sam-cli /usr/share/gradle"
+          rm_cmd: "rmz"
+          rmz_version: "3.1.1"
+          testing: false
+
+      - name: 📥 Checkout Action Repository
         uses: actions/checkout@v4
 
-      - name: 📦 Install Build Dependencies
+      - name: 📦 Install Tools & Dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            build-essential make bc libncurses-dev bison flex \
-            python3 python3-setuptools python-is-python3 git ccache rsync \
-            libssl-dev libelf-dev dwarves device-tree-compiler \
-            file gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu sudo \
-            lz4 zstd cpio curl wget zip unzip
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential flex git lld llvm python3 \
+          curl wget libssl-dev libelf-dev python3-setuptools python-is-python3 \
+          make gcc gcc-aarch64-linux-gnu binutils binutils-aarch64-linux-gnu g++ \
+          cpio zip unzip lz4 zstd xz-utils libncurses-dev libncurses5-dev \
+          kmod rsync clang dwarves pahole ccache device-tree-compiler zlib1g-dev \
+          libc6-dev-i386 cmake ninja-build file patch sudo
 
-      - name: 🧹 Prepare Workspace Directories
+      - name: ⚙️ Export ccache + determinism
+        if: github.event.inputs.cache == 'true'
         run: |
-          set -euo pipefail
-          rm -rf "${KERNEL_ROOT}" "${FINAL_STAGING}"
-          mkdir -p "${KERNEL_ROOT}"
-          mkdir -p "${FINAL_STAGING}/lib/modules/0.0"
+          CACHE_DIR="${{ github.workspace }}/.ccache"
+          mkdir -p "$CACHE_DIR"
+          
+          SETTINGS=(
+            "CCACHE_DIR=$CACHE_DIR"
+            "CCACHE_MAXSIZE=12G"
+            "CCACHE_COMPILERCHECK=content"
+            "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
+            "CCACHE_NOHASHDIR=true"
+            "CCACHE_IGNOREOPTIONS=-sysroot* -fdebug-prefix-map=* -fmacro-prefix-map=*"
+            "CCACHE_COMPRESS=true"
+            "CCACHE_COMPRESSLEVEL=8"
+            "CCACHE_DIRECT=true"
+            "CCACHE_FILE_CLONE=true"
+            "CCACHE_INODE_CACHE=true"
+            "CCACHE_IS_KERNEL_COMPILING=true"
+            "CCACHE_UMASK=002"
+            "KBUILD_BUILD_TIMESTAMP=2026-01-01"
+            "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale,file_stat_matches"
+          )
+
+          for setting in "${SETTINGS[@]}"; do
+            export "$setting"
+            echo "$setting" >> $GITHUB_ENV
+          done
+
+          if ccache --help 2>&1 | grep -q 'depend_mode'; then
+              export CCACHE_DEPEND=true
+              echo "CCACHE_DEPEND=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: ♻️ Restore ccache
+        if: github.event.inputs.cache == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-
+
+      - name: 🔗 Ensure ccache is masked into PATH
+        if: github.event.inputs.cache == 'true'
+        run: |
+          echo "/usr/lib/ccache" >> $GITHUB_PATH
+          echo "CC=ccache clang" >> $GITHUB_ENV
+          echo "CXX=ccache clang++" >> $GITHUB_ENV
+
+      - name: ⚡ Setup 25GB Swap (For ThinLTO)
+        uses: thejerrybao/setup-swap-space@v1
+        with:
+          swap-size-gb: 25
 
       - name: 📥 Clone Kernel Source
         run: |
+          mkdir -p ${KERNEL_ROOT}
           echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} ${{ github.event.inputs.KERNEL_SOURCE }} ${KERNEL_ROOT}
 
-      - name: 🔧 Setup Toolchain (${{ github.event.inputs.CLANG_VERSION }})
+      - name: 🔧 Setup Toolchain (${{ github.event.inputs.compiler }})
         run: |
           set -euo pipefail
           mkdir -p ${GITHUB_WORKSPACE}/toolchains
           cd ${GITHUB_WORKSPACE}/toolchains
           
-          CHOICE="${{ github.event.inputs.CLANG_VERSION }}"
-          if [[ "$CHOICE" == *"AOSP"* ]]; then
-            CLANG_VER=$(echo "$CHOICE" | awk '{print $1}')
-            if [[ "$CLANG_VER" == "clang-r487747c" ]]; then
-              DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r1/${CLANG_VER}.tar.gz"
-            else
-              DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/${CLANG_VER}.tar.gz"
-            fi
+          if [ "${{ github.event.inputs.compiler }}" = "llvm22" ]; then
+            echo ">>> Installing LLVM 22 from official APT repository..."
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 22
+            sudo apt-get install -y clang-22 lld-22 llvm-22
+            sudo ln -sf /usr/bin/clang-22 /usr/bin/clang || true
+            sudo ln -sf /usr/bin/ld.lld-22 /usr/bin/ld.lld || true
+            echo "COMPILER_PATH=/usr/lib/llvm-22/bin:/usr/bin" >> $GITHUB_ENV
+            echo "COMPILER_CC=ccache clang-22" >> $GITHUB_ENV
+          else
+            echo ">>> Fetching Google Clang (r487747c - Android 14 Stable)..."
+            CLANG_VER="clang-r487747c"
+            DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r1/${CLANG_VER}.tar.gz"
             mkdir -p ${CLANG_VER}
             curl -L "$DL_URL" -o clang.tar.gz
             tar -xzf clang.tar.gz -C ${CLANG_VER}
             echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=clang" >> $GITHUB_ENV
-          elif [[ "$CHOICE" == *"clang-22"* ]]; then
-            curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg
-            echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list
-            sudo apt-get update -y
-            sudo apt-get install -y clang-22 llvm-22 lld-22
-            sudo ln -sf /usr/bin/clang-22 /usr/bin/clang || true
-            sudo ln -sf /usr/bin/ld.lld-22 /usr/bin/ld.lld || true
-            echo "COMPILER_PATH=/usr/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=clang-22" >> $GITHUB_ENV
-          elif [[ "$CHOICE" == *"Neutron"* ]]; then
-            mkdir -p neutron && cd neutron
-            curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-            chmod +x antman && ./antman -S
-            echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/neutron/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=clang" >> $GITHUB_ENV
+            echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
           fi
 
       - name: ⬇️ Download AOSP Kernel Build Tools
@@ -173,10 +284,9 @@ jobs:
         if: github.event.inputs.ENABLE_SU_CONFIG == 'true'
         run: |
           cd ${KERNEL_ROOT}
-          echo ">>> Generating new su.config with all SUSFS features forced to 'y'..."
-          
+          echo ">>> Generating su.config with SUSFS and Anti-Root bypasses forced to 'y'..."
           cat > arch/arm64/configs/su.config << 'EOF'
-          #Kernel SU
+          # KernelSU
           CONFIG_KPROBES=y
           CONFIG_KPROBE_EVENTS=y
           CONFIG_HAVE_KPROBES=y
@@ -185,7 +295,7 @@ jobs:
           CONFIG_KSU=y
           CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
 
-          # --- SuSFS Configuration (All Forced to y) ---
+          # SuSFS Configuration
           CONFIG_KSU_SUSFS=y
           CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
           CONFIG_KSU_SUSFS_SUS_MAP=y
@@ -202,7 +312,7 @@ jobs:
           CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 
-          # Disable Scamsung anti-root protection
+          # Disable Samsung Anti-Root Protection
           CONFIG_UH=n
           CONFIG_RKP=n
           CONFIG_KDP=n
@@ -210,7 +320,7 @@ jobs:
           CONFIG_PROCA=n
           CONFIG_FIVE=n
 
-          #Force Load Kernel Modules
+          # Force Load Kernel Modules
           CONFIG_MODULES=y
           CONFIG_MODULE_FORCE_LOAD=y
           CONFIG_MODULE_UNLOAD=y
@@ -221,47 +331,35 @@ jobs:
           CONFIG_MODULE_COMPRESS=n
           CONFIG_TRIM_UNUSED_KSYMS=n
 
-          # --- Advanced Networking & IP Sets ---
-          CONFIG_IP_NF_TARGET_TTL=y
-          CONFIG_IP6_NF_TARGET_HL=y
-          CONFIG_IP6_NF_MATCH_HL=y
-          CONFIG_TCP_CONG_ADVANCED=y
-          CONFIG_TCP_CONG_BBR=y
-          CONFIG_NET_SCH_FQ=y
-          CONFIG_TCP_CONG_CUBIC=y
-          CONFIG_TCP_CONG_BIC=n
-          CONFIG_TCP_CONG_WESTWOOD=y
-          CONFIG_TCP_CONG_HTCP=y
-          CONFIG_IP_SET=y
-          CONFIG_IP_SET_MAX=65534
-          CONFIG_IP_SET_BITMAP_IP=y
-          CONFIG_IP_SET_BITMAP_IPMAC=y
-          CONFIG_IP_SET_BITMAP_PORT=y
-          CONFIG_IP_SET_HASH_IP=y
-          CONFIG_IP_SET_HASH_IPMARK=y
-          CONFIG_IP_SET_HASH_IPPORT=y
-          CONFIG_IP_SET_HASH_IPPORTIP=y
-          CONFIG_IP_SET_HASH_IPPORTNET=y
-          CONFIG_IP_SET_HASH_IPMAC=y
-          CONFIG_IP_SET_HASH_MAC=y
-          CONFIG_IP_SET_HASH_NETPORTNET=y
-          CONFIG_IP_SET_HASH_NET=y
-          CONFIG_IP_SET_HASH_NETNET=y
-          CONFIG_IP_SET_HASH_NETPORT=y
-          CONFIG_IP_SET_HASH_NETIFACE=y
-          CONFIG_IP_SET_LIST_SET=y
-
-          # --- Kallsyms ---
+          # Kallsyms & NTSync Built-in
           CONFIG_KALLSYMS=y
           CONFIG_KALLSYMS_ALL=y
+          CONFIG_NTSYNC=y
+          CONFIG_LOCALVERSION_AUTO=n
+          CONFIG_LOCALVERSION="@MrPankaj24"
           EOF
-          
           echo "✅ Generated arch/arm64/configs/su.config successfully!"
+
+      - name: 📝 Generate SELinux Permissive Config
+        if: github.event.inputs.ENABLE_SELINUX_PERMISSIVE == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Generating permissive.config..."
+          cat > arch/arm64/configs/permissive.config << 'EOF'
+          CONFIG_SECURITY_SELINUX_DEVELOP=y
+          CONFIG_SECURITY_SELINUX_BOOTPARAM=y
+          CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE=0
+          # CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE is not set
+          # CONFIG_ALWAYS_ENFORCING is not set
+          CONFIG_CMDLINE_BOOL=y
+          CONFIG_CMDLINE="androidboot.selinux=permissive enforcing=0"
+          CONFIG_CMDLINE_EXTEND=y
+          EOF
+          echo "✅ Generated arch/arm64/configs/permissive.config successfully!"
 
       - name: 📥 Fetch Individual Extra Configs
         run: |
           cd ${KERNEL_ROOT}/arch/arm64/configs/
-          
           download_config() {
             local url="$1"
             local filename="$2"
@@ -271,20 +369,27 @@ jobs:
               curl -LSs "$raw_url" -o "$filename"
             fi
           }
-
           if [ "${{ github.event.inputs.ENABLE_PERF_CONFIG }}" == "true" ]; then
-            download_config "${{ github.event.inputs.PERF_CONFIG_URL }}" "perf.config"
+            download_config "${{ env.PERF_CONFIG_URL }}" "perf.config"
           fi
-          
           if [ "${{ github.event.inputs.ENABLE_NETHUNTER_CONFIG }}" == "true" ]; then
-            download_config "${{ github.event.inputs.NETHUNTER_CONFIG_URL }}" "nethunter.config"
+            download_config "${{ env.NETHUNTER_CONFIG_URL }}" "nethunter.config"
           fi
-          
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ]; then
             download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
           fi
 
-      - name: 🛡️ Inject KernelSU Variant (${{ github.event.inputs.KSU_VARIANT }})
+      - name: 📥 Fetch & Apply DroidSpaces Patch
+        if: github.event.inputs.ENABLE_DROIDSPACE == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Downloading and applying DroidSpaces patch..."
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_for_1330.patch" -o droidspace_1330.patch
+          patch -p1 --forward < droidspace_1330.patch || true
+          rm droidspace_1330.patch
+
+      - name: 🛡️ Inject KernelSU Variant & Apply Locked SUSFS Patches
+        if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT != 'None'
         run: |
           cd ${KERNEL_ROOT}
           rm -rf KernelSU drivers/kernelsu
@@ -295,39 +400,19 @@ jobs:
           if [[ "$CHOICE" == "ReSukiSU" ]]; then
             echo ">>> Injecting ReSukiSU (Branch: $BRANCH)..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/$BRANCH/kernel/setup.sh" | sed "s/main/$BRANCH/g" | bash -s "$BRANCH"
-
-            echo ">>> Downloading and applying 70_ksu_safety patch for ReSukiSU..."
+            echo ">>> Applying 70_ksu_safety patch for ReSukiSU..."
             curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
-            
-            # Apply patch inside the KernelSU directory
-            cd KernelSU
-            patch -p1 --forward < ../ksu_safety.patch || true
-            cd ..
-            
-            echo ">>> Cleaning up safety patch file..."
+            cd KernelSU && patch -p1 --forward < ../ksu_safety.patch || true && cd ..
             rm ksu_safety.patch
             
           elif [[ "$CHOICE" == *"Official"* ]]; then
             echo ">>> Injecting Official KernelSU (Branch/Commit: $BRANCH)..."
             git clone -b $BRANCH https://github.com/tiann/KernelSU.git KernelSU || git clone https://github.com/tiann/KernelSU.git KernelSU
-            cd KernelSU && git checkout $BRANCH || true
-            cd ..
-            
-            echo ">>> Fetching SUSFS patch for Official KSU..."
+            cd KernelSU && git checkout $BRANCH || true && cd ..
             git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
-            cd susfs4ksu
-            git checkout d8358055f3410aa8775bb283d6f1c12fcc13c79d
-            cd ..
-            
-            echo ">>> Applying SUSFS patch to KernelSU..."
-            cd KernelSU
-            patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
-            cd ..
-            
-            echo ">>> Running KSU local setup.sh..."
+            cd susfs4ksu && git checkout d8358055f3410aa8775bb283d6f1c12fcc13c79d && cd ..
+            cd KernelSU && patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true && cd ..
             bash KernelSU/kernel/setup.sh
-            
-            echo ">>> Cleaning up patch files..."
             rm -rf susfs4ksu
             
           elif [[ "$CHOICE" == *"Next"* ]]; then
@@ -339,37 +424,48 @@ jobs:
             echo ">>> Injecting wksu (Branch: $BRANCH)..."
             git clone -b $BRANCH https://github.com/WildKernels/Wild_KSU.git KernelSU
             curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
-            
           fi
           
-          if [[ "$CHOICE" != "None" ]]; then
-            echo ">>> Symlinking drivers/kernelsu..."
-            ln -sf ../KernelSU drivers/kernelsu
-          else
-            echo ">>> Skipping KernelSU injection."
+          echo ">>> Symlinking drivers/kernelsu..."
+          ln -sf ../KernelSU drivers/kernelsu
+          
+          # --- APPLY LOCKED SUSFS TO KERNEL TREE ---
+          if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
+            echo ">>> Cloning Official SUSFS repository..."
+            git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
+            if [ -n "${{ github.event.inputs.SUSFS_SHA }}" ]; then
+              echo ">>> Locking SUSFS commit to SHA: ${{ github.event.inputs.SUSFS_SHA }}..."
+              cd susfs_repo && git checkout ${{ github.event.inputs.SUSFS_SHA }} && cd ..
+            fi
+            echo ">>> Copying SUSFS core fs and headers into kernel tree..."
+            cp -rf susfs_repo/kernel_patches/fs/* fs/
+            cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
+            echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
+            patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
+            echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
+            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch" -o 51_fix.patch
+            patch -p1 --forward < 51_fix.patch || true
+            rm -rf susfs_repo 51_fix.patch
+            find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
       - name: 📥 Fetch & Apply NTSYNC Patches
+        if: github.event.inputs.ENABLE_NTSYNC == 'true'
         run: |
           cd ${KERNEL_ROOT}
-          echo ">>> Cloning MrPankaj24/kernel_patch repository..."
+          echo ">>> Downloading and applying NTSYNC patches..."
           git clone https://github.com/MrPankaj24/kernel_patch.git temp_patch_repo
-          
-          echo ">>> Applying ntsync_base.patch..."
-          # We use || true here to prevent GitHub Actions from crashing on harmless rejects like namespace.c
           patch -p1 --forward < temp_patch_repo/ntsync_base.patch || true
-          
-          echo ">>> Applying ntsync_compat_android13-5.15.patch..."
           patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
-          
-          echo ">>> Cleaning up patch repository..."
           rm -rf temp_patch_repo
 
       - name: 🔒 Inject Baseband Guard (BBG)
+        if: github.event.inputs.ENABLE_BBG == 'true'
         run: |
           cd ${KERNEL_ROOT}
+          echo ">>> Setting up Baseband Guard..."
           curl -LSs https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
-          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE }}_defconfig"
+          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
           if [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_BBG=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_LOG_BUF_SHIFT=20" >> "$DEFCONFIG_FILE"
@@ -380,7 +476,111 @@ jobs:
           BBG_C_FILE=$(find . -name "baseband_guard.c" | head -n 1)
           if [ -n "$BBG_C_FILE" ] && grep -q "get_link(dentry, inode, NULL)" "$BBG_C_FILE"; then
             curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
-            patch -p1 --forward < bbg_fix.patch
+            patch -p1 --forward < bbg_fix.patch || true
+          fi
+
+      - name: ⚡ Inject Re:Kernel Optimization
+        if: github.event.inputs.ENABLE_REKERNEL == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Injecting Re:Kernel background app freezing optimization..."
+          git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
+          mkdir -p drivers/rekernel
+          cp -rp temp_rekernel_repo/Integrate/rekernel/* drivers/rekernel/
+          cp temp_rekernel_repo/Integrate/patches.sh ./
+          chmod +x patches.sh
+          sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
+          ./patches.sh || true
+          DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
+          if [ -f "$DEFCONFIG_FILE" ]; then
+            echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_REKERNEL_NETWORK=n" >> "$DEFCONFIG_FILE"
+          fi
+          rm -rf temp_rekernel_repo patches.sh
+
+      - name: 🛠️ Fix Clang-20+ sizeof-pointer-memaccess Error
+        if: github.event.inputs.ENABLE_CLANG20_FIX == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Patching OVT touchscreen driver for newer Clang compatibility..."
+          find drivers/input/touchscreen/ovt/ -type f -name "*.c" -exec sed -i 's/sizeof(tcm_hcd->print_buf)/SEC_CMD_STR_LEN/g' {} +
+
+      - name: 🛑 Apply CRCs Disable Patch
+        if: github.event.inputs.ENABLE_CECS_PATCH == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
+
+          PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/CRCs_disable.patch"
+          PATCH_FILE="CRCs_disable.patch"
+
+          echo ">>> Downloading CRCs_disable patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+
+          echo ">>> Validating patch..."
+          test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
+          head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
+            echo "❌ Not a valid patch file. First lines:"
+            head -n 20 "${PATCH_FILE}"
+            exit 1
+          }
+
+          echo ">>> Checking applicability..."
+          if git apply --check "${PATCH_FILE}"; then
+            git apply "${PATCH_FILE}"
+            echo "✅ CRCs_disable patch applied successfully."
+          else
+            echo "❌ Patch failed to apply cleanly."
+            git apply --check --verbose "${PATCH_FILE}" || true
+            exit 1
+          fi
+
+          rm -f "${PATCH_FILE}"
+
+      - name: 🌐 Apply BBRv3 TCP Congestion Control Patch
+        if: github.event.inputs.ENABLE_BBRV3 == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
+
+          PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android13-5.15.patch"
+          PATCH_FILE="bbrv3.patch"
+
+          echo ">>> Downloading BBRv3 patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+
+          echo ">>> Validating patch..."
+          test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
+          head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
+            echo "❌ Not a valid patch file. First lines:"
+            head -n 20 "${PATCH_FILE}"
+            exit 1
+          }
+
+          echo ">>> Checking applicability..."
+          if git apply --check "${PATCH_FILE}"; then
+            git apply "${PATCH_FILE}"
+            echo "✅ BBRv3 patch applied successfully."
+          else
+            echo "❌ Patch failed to apply cleanly."
+            git apply --check --verbose "${PATCH_FILE}" || true
+            exit 1
+          fi
+
+          rm -f "${PATCH_FILE}"
+      
+      - name: 🧼 Remove -dirty tag (Commit all changes)
+        run: |
+          cd ${KERNEL_ROOT}
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action Bot"
+          echo ">>> Committing all kernel patches to remove -dirty version tag..."
+          git add -A
+          git commit -m "auto: apply all patches, configs, and optimizations" || true
+          if [ -d "KernelSU/.git" ]; then
+            cd KernelSU && git add -A && git commit -m "auto: apply su module patches" || true && cd ..
           fi
 
       - name: 🔨 Compile Kernel Image
@@ -388,38 +588,43 @@ jobs:
           set -euo pipefail
           cd ${KERNEL_ROOT}
           mkdir -p ${OUTDIR}
-
-          # --- 1. ABI & KMI Settings (Nuke checks) ---
+          
+          # --- ABI & KMI Settings (Nuke checks from Blueprint) ---
           export ABI_DEFINITION=
           export KMI_SYMBOL_LIST_STRICT_MODE=0
           export SKIP_ABI_CHECKS=1
           export KMI_ENFORCE=0
-          
+          export LTO=thin
+
           export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
           export CC="${COMPILER_CC}"
+          export HOSTCC="${COMPILER_CC}"
           export LD=ld.lld
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
           export LLVM=1
           export LLVM_IAS=1
           export DTC_FLAGS="-@"
-          export LTO=thin
-          export DEPMOD=depmod
-          
-          # Always start with the base defconfig
-          CONFIG_ARGS="${{ github.event.inputs.DEVICE }}_defconfig"
-          
-          # Append individual configs ONLY if checked and downloaded successfully
+          export PLATFORM_VERSION=15
+          export ANDROID_MAJOR_VERSION=t
+
+          CONFIG_ARGS="${{ github.event.inputs.DEVICE_DEFCONFIG }}"
           if [ "${{ github.event.inputs.ENABLE_SU_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/su.config" ]; then CONFIG_ARGS="$CONFIG_ARGS su.config"; fi
+          if [ "${{ github.event.inputs.ENABLE_SELINUX_PERMISSIVE }}" == "true" ] && [ -f "arch/arm64/configs/permissive.config" ]; then CONFIG_ARGS="$CONFIG_ARGS permissive.config"; fi
           if [ "${{ github.event.inputs.ENABLE_PERF_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/perf.config" ]; then CONFIG_ARGS="$CONFIG_ARGS perf.config"; fi
           if [ "${{ github.event.inputs.ENABLE_NETHUNTER_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/nethunter.config" ]; then CONFIG_ARGS="$CONFIG_ARGS nethunter.config"; fi
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/custom.config" ]; then CONFIG_ARGS="$CONFIG_ARGS custom.config"; fi
           
-          echo ">>> Generating Base Config using: make $CONFIG_ARGS"
-          make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
+          echo "===================================================="
+          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.compiler }}"
+          echo "===================================================="
           
-          echo ">>> Compiling Kernel ($(nproc --all) threads)..."
+          make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
           make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" 2>&1 | tee build.log
+
+          if [ "${{ github.event.inputs.cache }}" = "true" ]; then
+            ccache -s
+          fi
 
       - name: 🧩 Compile & Strip Modules
         run: |
@@ -432,94 +637,172 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" INSTALL_MOD_STRIP="--strip-debug --keep-section=.ARM.attributes" INSTALL_MOD_PATH="${MODULES_OUTDIR}" modules_install 2>&1 | tee -a build.log || true
 
-      - name: 📦 Package Artifacts & AnyKernel3
+      - name: 📦 Package Artifacts (AnyKernel3 & Modules)
         run: |
           set -euo pipefail
           mkdir -p ${GITHUB_WORKSPACE}/artifacts
           
-          # --- 1. AnyKernel3 Flashable Zip ---
+          # 1. AnyKernel3 Flashable Zip
           echo ">>> Cloning AnyKernel3..."
           git clone --depth=1 https://github.com/MrPankaj24/AnyKernel3.git ${GITHUB_WORKSPACE}/AnyKernel3
           
-          echo ">>> Copying Kernel Image to AnyKernel3..."
           if [ -f "${OUTDIR}/arch/arm64/boot/Image" ]; then
             cp "${OUTDIR}/arch/arm64/boot/Image" "${GITHUB_WORKSPACE}/AnyKernel3/"
           else
-            echo "❌ Kernel Image not found!"
+            echo "❌ Kernel Image not found in ${OUTDIR}/arch/arm64/boot/Image!"
             exit 1
           fi
           
-          echo ">>> Creating Flashable Zip..."
           cd ${GITHUB_WORKSPACE}/AnyKernel3
-          # Clean up repo files before zipping
           rm -rf .git README.md
-          
-          # Set dynamic Zip Name
-          AK3_ZIP_NAME="Project24-Kernel-M14-${{ github.event.inputs.KSU_VARIANT }}.zip"
+          SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
+          AK3_ZIP_NAME="Project24-Kernel-${SHORT_DEVICE}-${{ github.event.inputs.KSU_VARIANT }}.zip"
           zip -r9 "${GITHUB_WORKSPACE}/artifacts/${AK3_ZIP_NAME}" ./*
           echo "✅ AnyKernel3 Flashable Zip created: ${AK3_ZIP_NAME}"
           
-          # --- 2. Stripped Modules Zip ---
+          # 2. Stripped Modules Zip
           echo ">>> Packaging Stripped Modules..."
           cd ${MODULES_OUTDIR}
-          MODULES_ZIP_NAME="Project24-Modules-M14-${{ github.event.inputs.KSU_VARIANT }}.zip"
-          
-          # Check if the lib directory exists
+          MODULES_ZIP_NAME="Project24-Modules-${SHORT_DEVICE}-${{ github.event.inputs.KSU_VARIANT }}.zip"
           if [ -d "lib" ]; then 
-            echo ">>> Cleaning up infinite symlinks..."
-            # This is the magic fix! Deletes the source and build shortcuts.
             rm -f lib/modules/*/build lib/modules/*/source
-            
-            echo ">>> Zipping module files..."
-            # Added -y flag just to be perfectly safe with any other symlinks
             zip -r9y "${GITHUB_WORKSPACE}/artifacts/${MODULES_ZIP_NAME}" lib/*
             echo "✅ Modules packed: ${MODULES_ZIP_NAME}"
           else
             echo "⚠️ No modules found to pack!"
           fi
 
-      - name: ⬆️ Upload Action Artifacts (Always Runs)
+      - name: ⬆️ Upload Action Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Project24-M14-${{ github.event.inputs.KSU_VARIANT }}-build
+          name: Project24-${{ github.event.inputs.DEVICE_DEFCONFIG }}-${{ github.event.inputs.KSU_VARIANT }}-build
           path: ${{ github.workspace }}/artifacts/
           retention-days: 7
 
       - name: 🏷️ Format Safe Release Tag
         if: github.event.inputs.MAKE_RELEASE == 'true'
         run: |
-          # Remove spaces and parentheses from the KSU variant name for the Git Tag
           SAFE_VARIANT=$(echo "${{ github.event.inputs.KSU_VARIANT }}" | tr -d ' ()')
-          echo "SAFE_TAG=P24-${SAFE_VARIANT}-Run${{ github.run_number }}" >> $GITHUB_ENV
+          SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
+          echo "SAFE_TAG=P24-${SHORT_DEVICE}-${SAFE_VARIANT}-Run${{ github.run_number }}" >> $GITHUB_ENV
 
       - name: 🚀 Publish GitHub Release
         if: github.event.inputs.MAKE_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          # The release title can still have spaces and look nice
-          name: Project 24 Kernel (${{ github.event.inputs.KSU_VARIANT }}) - Run ${{ github.run_number }}
-          # The underlying tag will use the safe, spaceless version
+          name: Project 24 Kernel (${{ github.event.inputs.DEVICE_DEFCONFIG }}) - Run ${{ github.run_number }}
           tag_name: ${{ env.SAFE_TAG }}
           body: |
-            ### ⚡ Project 24 Kernel
+            ### ⚡ Project 24 Custom Kernel (Blueprint Edition)
             
             > [!WARNING]
-            > **DISCLAIMER:** This kernel is for experimental purposes. Flash at your own risk! I am not responsible for bootloops, hard-bricked devices, dead SD cards, thermonuclear war, or you getting fired because your alarm app failed. Please make sure you have a working backup before flashing.
+            > **DISCLAIMER:** This kernel is for experimental purposes. Flash at your own risk! Make sure you have a working backup before flashing.
 
-            #### ✨ Core Features Included:
-            * **Root Stealth:** Integrated with SUSFS and Zeromount to completely hide root access.
-            * **Cellular Security:** Baseband Guard (BBG) blocks malicious network attacks.
-            * **Virtualization:** Full kernel-level support for LXC, Docker, and Droidspace containers.
-            * **Pentesting:** Native Kali Nethunter compatibility baked in.
+            #### ✨ Core Features & Optimizations:
+            * **Root Stealth:** Integrated with KernelSU / SUSFS / Zeromount to bypass root detection.
+            * **Cellular Security:** Baseband Guard (BBG) blocks malicious cellular network attacks.
+            * **Virtualization:** Full kernel-level support for DroidSpaces containers.
+            * **Background Optimization:** Re:Kernel integrated for zero-lag background app freezing.
+            * **Build System:** Compiled with ccache acceleration and ThinLTO optimizations.
             
-            **Device:** ${{ github.event.inputs.DEVICE }}
-            **Toolchain:** ${{ github.event.inputs.CLANG_VERSION }}
-            **Root Variant:** ${{ github.event.inputs.KSU_VARIANT }}
-            **Manager Branch:** `${{ github.event.inputs.MANAGER_BRANCH }}`
-            **Kernel Branch Built:** `${{ github.event.inputs.KERNEL_BRANCH }}`
+            | Parameter | Value |
+            | :--- | :--- |
+            | **Defconfig** | `${{ github.event.inputs.DEVICE_DEFCONFIG }}` |
+            | **Toolchain** | `${{ github.event.inputs.compiler }}` |
+            | **Root Variant** | `${{ github.event.inputs.KSU_VARIANT }}` |
+            | **Manager Branch** | `${{ github.event.inputs.MANAGER_BRANCH }}` |
+            | **Kernel Branch** | `${{ github.event.inputs.KERNEL_BRANCH }}` |
+            | **SUSFS Commit Pinned** | `${{ github.event.inputs.SUSFS_SHA }}` |
             
-            *This release was automatically generated by GitHub Actions.*
+            *This release was automatically compiled and published by GitHub Actions.*
           files: |
             ${{ github.workspace }}/artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📱 Upload to Telegram
+        if: github.event.inputs.UPLOAD_TELEGRAM == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+
+          # --- Validate secrets ---
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "❌ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set in repo secrets!"
+            exit 1
+          fi
+
+          SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
+          KSU_VARIANT="${{ github.event.inputs.KSU_VARIANT }}"
+          COMPILER="${{ github.event.inputs.compiler }}"
+          BRANCH="${{ github.event.inputs.KERNEL_BRANCH }}"
+          RUN_NUM="${{ github.run_number }}"
+
+          # --- Build caption message ---
+          CAPTION="⚡ *Project 24 Kernel Build*
+          
+          📱 Device: \`${SHORT_DEVICE}\`
+          🔧 Compiler: \`${COMPILER}\`
+          🛡️ Root: \`${KSU_VARIANT}\`
+          🌿 Branch: \`${BRANCH}\`
+          🔄 Run: #${RUN_NUM}
+          📅 Date: $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          _Powered by GitHub Actions_"
+
+          API_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
+
+          # --- Send caption as a separate message first ---
+          echo ">>> Sending build info message..."
+          curl -s -X POST "${API_URL}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="${CAPTION}" \
+            -d disable_web_page_preview=true \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('✅ Message sent' if r.get('ok') else f'❌ Failed: {r}')"
+
+          # --- Upload each zip artifact ---
+          ARTIFACT_DIR="${{ github.workspace }}/artifacts"
+          UPLOADED=0
+          FAILED=0
+
+          for FILE in "${ARTIFACT_DIR}"/*.zip; do
+            [ -f "$FILE" ] || continue
+            FILENAME=$(basename "$FILE")
+            FILESIZE=$(du -h "$FILE" | cut -f1)
+            echo ">>> Uploading ${FILENAME} (${FILESIZE})..."
+
+            # Telegram has a 50MB limit for bots (2GB for local bots, but API bots = 50MB)
+            # Using sendDocument for files
+            RESPONSE=$(curl -s -X POST "${API_URL}/sendDocument" \
+              -F chat_id="${TELEGRAM_CHAT_ID}" \
+              -F document="@${FILE}" \
+              -F caption="📦 ${FILENAME} (${FILESIZE})" \
+              --max-time 600)
+
+            if echo "$RESPONSE" | python3 -c "import sys,json; r=json.load(sys.stdin); sys.exit(0 if r.get('ok') else 1)"; then
+              echo "✅ ${FILENAME} uploaded successfully!"
+              UPLOADED=$((UPLOADED + 1))
+            else
+              echo "❌ Failed to upload ${FILENAME}"
+              echo "   Response: ${RESPONSE}"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "========================================="
+          echo "  Telegram Upload Summary"
+          echo "  ✅ Uploaded: ${UPLOADED}"
+          echo "  ❌ Failed:   ${FAILED}"
+          echo "========================================="
+
+          if [ "${FAILED}" -gt 0 ]; then
+            echo "⚠️ Some uploads failed — check Telegram API response above"
+          fi    
+
+      - name: 🧹 Cleanup Workspace
+        if: always()
+        run: rm -rf ${{ github.workspace }}/kernel_workspace/out
