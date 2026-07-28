@@ -128,6 +128,12 @@ on:
         required: true
         type: boolean
         default: true
+        
+      UPLOAD_TELEGRAM:
+        description: 'Upload Build to Telegram?'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build-kernel:
@@ -676,6 +682,89 @@ jobs:
             ${{ github.workspace }}/artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📱 Upload to Telegram
+        if: github.event.inputs.UPLOAD_TELEGRAM == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+
+          # --- Validate secrets ---
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "❌ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set in repo secrets!"
+            exit 1
+          fi
+
+          SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
+          KSU_VARIANT="${{ github.event.inputs.KSU_VARIANT }}"
+          COMPILER="${{ github.event.inputs.compiler }}"
+          BRANCH="${{ github.event.inputs.KERNEL_BRANCH }}"
+          RUN_NUM="${{ github.run_number }}"
+
+          # --- Build caption message ---
+          CAPTION="⚡ *Project 24 Kernel Build*
+          
+          📱 Device: \`${SHORT_DEVICE}\`
+          🔧 Compiler: \`${COMPILER}\`
+          🛡️ Root: \`${KSU_VARIANT}\`
+          🌿 Branch: \`${BRANCH}\`
+          🔄 Run: #${RUN_NUM}
+          📅 Date: $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          _Powered by GitHub Actions_"
+
+          API_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
+
+          # --- Send caption as a separate message first ---
+          echo ">>> Sending build info message..."
+          curl -s -X POST "${API_URL}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="${CAPTION}" \
+            -d disable_web_page_preview=true \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('✅ Message sent' if r.get('ok') else f'❌ Failed: {r}')"
+
+          # --- Upload each zip artifact ---
+          ARTIFACT_DIR="${{ github.workspace }}/artifacts"
+          UPLOADED=0
+          FAILED=0
+
+          for FILE in "${ARTIFACT_DIR}"/*.zip; do
+            [ -f "$FILE" ] || continue
+            FILENAME=$(basename "$FILE")
+            FILESIZE=$(du -h "$FILE" | cut -f1)
+            echo ">>> Uploading ${FILENAME} (${FILESIZE})..."
+
+            # Telegram has a 50MB limit for bots (2GB for local bots, but API bots = 50MB)
+            # Using sendDocument for files
+            RESPONSE=$(curl -s -X POST "${API_URL}/sendDocument" \
+              -F chat_id="${TELEGRAM_CHAT_ID}" \
+              -F document="@${FILE}" \
+              -F caption="📦 ${FILENAME} (${FILESIZE})" \
+              --max-time 600)
+
+            if echo "$RESPONSE" | python3 -c "import sys,json; r=json.load(sys.stdin); sys.exit(0 if r.get('ok') else 1)"; then
+              echo "✅ ${FILENAME} uploaded successfully!"
+              UPLOADED=$((UPLOADED + 1))
+            else
+              echo "❌ Failed to upload ${FILENAME}"
+              echo "   Response: ${RESPONSE}"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "========================================="
+          echo "  Telegram Upload Summary"
+          echo "  ✅ Uploaded: ${UPLOADED}"
+          echo "  ❌ Failed:   ${FAILED}"
+          echo "========================================="
+
+          if [ "${FAILED}" -gt 0 ]; then
+            echo "⚠️ Some uploads failed — check Telegram API response above"
+          fi    
 
       - name: 🧹 Cleanup Workspace
         if: always()
