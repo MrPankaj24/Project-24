@@ -474,25 +474,28 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
             patch -p1 --forward < bbg_fix.patch || true
           fi
-
+          
       - name: ⚡ Inject Re:Kernel Optimization
         if: github.event.inputs.ENABLE_REKERNEL == 'true'
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Injecting Re:Kernel background app freezing optimization..."
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
-          mkdir -p drivers/rekernel
-          cp -rp temp_rekernel_repo/Integrate/rekernel/* drivers/rekernel/
+          # Copy to ./rekernel in KERNEL_ROOT so patches.sh can find it
+          cp -rp temp_rekernel_repo/Integrate/rekernel ./rekernel
           cp temp_rekernel_repo/Integrate/patches.sh ./
           chmod +x patches.sh
-          sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
           ./patches.sh || true
+          # Now modify the header after patches.sh has copied it into drivers/rekernel/
+          if [ -f "drivers/rekernel/rekernel.h" ]; then
+            sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
+          fi
           DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
           if [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_REKERNEL_NETWORK=n" >> "$DEFCONFIG_FILE"
           fi
-          rm -rf temp_rekernel_repo patches.sh
+          rm -rf ./rekernel temp_rekernel_repo patches.sh
 
       - name: 🛠️ Fix Clang-20+ sizeof-pointer-memaccess Error
         if: github.event.inputs.ENABLE_CLANG20_FIX == 'true'
@@ -618,21 +621,20 @@ jobs:
             patch -p1 --fuzz=2 --forward < "/tmp/wk_patches/${p}" || echo "  ⚠️ Warning: ${p} had minor rejects or was already applied."
           done
 
-          # 2. Exynos Assembly memcmp optimization (Sed symbol adjustment for Linux 5.15)
-          echo ">>> Applying Exynos ARM64 memcmp assembly optimization (5.15 symbol mode)..."
+          # 2. Exynos Assembly memcmp optimization (Linux 5.15 symbol mode)
+          echo ">>> Applying Exynos ARM64 memcmp assembly optimization..."
           curl -fL -sS --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/Samsung/optimise_memcmp_exynos.patch" -o "/tmp/wk_patches/optimise_memcmp_exynos.patch"
           sed -e 's/SYM_FUNC_START(__pi_memcmp)/SYM_FUNC_START_WEAK_PI(memcmp)/' \
               -e 's/SYM_FUNC_END(__pi_memcmp)/SYM_FUNC_END_PI(memcmp)/' \
               -e 's/SYM_FUNC_ALIAS_WEAK(memcmp, __pi_memcmp)/EXPORT_SYMBOL_NOKASAN(memcmp)/' \
               "/tmp/wk_patches/optimise_memcmp_exynos.patch" | patch -p1 --fuzz=2 --forward || true
 
-          # 3. Clear page 16-bytes alignment (Sed symbol adjustment for Linux 5.15 < 5.16)
-          echo ">>> Applying clear_page 16-byte alignment optimization (5.15 symbol mode)..."
+          # 3. Clear page 16-bytes alignment (Direct apply against SYM_FUNC_START_PI)
+          echo ">>> Applying clear_page 16-byte alignment optimization..."
           curl -fL -sS --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/clear_page_16bytes_align.patch" -o "/tmp/wk_patches/clear_page_16bytes_align.patch"
-          sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START(__pi_clear_page)/' \
-              "/tmp/wk_patches/clear_page_16bytes_align.patch" | patch -p1 --fuzz=2 --forward || true
+          patch -p1 --fuzz=2 --forward < "/tmp/wk_patches/clear_page_16bytes_align.patch" || true
 
-          # 4. Alarmtimer wakelock duration reduction (Inline sed)
+          # 4. Alarmtimer wakelock duration reduction
           echo ">>> Reducing alarmtimer wakelock duration from 2s to ktime min..."
           if [ -f "kernel/time/alarmtimer.c" ]; then
             sed -i 's/pm_wakeup_event(dev, 2 \* MSEC_PER_SEC);/pm_wakeup_event(dev, ktime_to_ms(min) + 1);/' kernel/time/alarmtimer.c || true
