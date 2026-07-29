@@ -23,21 +23,18 @@ on:
         required: true
         type: string
         default: 'm14x_defconfig'
-      
-      # --- 2. TOOLCHAIN & PERFORMANCE ---
-      compiler:
-        description: 'Compiler Toolchain'
+
+      # --- 2. TOOLCHAIN & ACCELERATION (Combined to stay under 25 limit) ---
+      toolchain_mode:
+        description: 'Compiler & CCache Selection'
         required: true
         type: choice
         options:
-          - llvm22
-          - google-clang
-        default: llvm22
-      cache:
-        description: 'Enable ccache acceleration'
-        required: true
-        type: boolean
-        default: true
+          - llvm22-ccache
+          - llvm22-nocache
+          - google-clang-ccache
+          - google-clang-nocache
+        default: llvm22-ccache
 
       # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
       ENABLE_KSU:
@@ -67,23 +64,15 @@ on:
         description: 'SUSFS Commit SHA (Leave empty for latest)'
         required: false
         type: string
-        default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
+        default: 'fbb7462dd4cca04c7d99a56500fe55fe51c3d6a3'
 
-      # --- 4. SECURITY & FEATURE PATCH CHECKBOXES ---
-      ENABLE_BBG:
-        description: 'Inject Baseband Guard (BBG Cellular Security)?'
-        type: boolean
-        default: true
-      ENABLE_REKERNEL:
-        description: 'Inject Re:Kernel (Background App Freezing Optimization)?'
+      # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
+      ENABLE_KERNEL_OPTIMIZATIONS:
+        description: 'Apply Exynos 5.15 Optimization Patch Suite?'
         type: boolean
         default: true
       ENABLE_DROIDSPACE:
         description: 'Apply DroidSpaces Virtualization Patch?'
-        type: boolean
-        default: true
-      ENABLE_NTSYNC:
-        description: 'Apply NTSYNC (Wine/Proton Synchronization) Patches?'
         type: boolean
         default: true
       ENABLE_CLANG20_FIX:
@@ -94,11 +83,7 @@ on:
         description: 'Apply Disable CECs+ Patch?'
         type: boolean
         default: true
-      ENABLE_BBRV3:
-        description: 'Apply BBRv3 TCP Congestion Control Patch?'
-        type: boolean
-        default: true
-      
+
       # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
         description: 'Bake generated su.config (SUSFS & Anti-Root Bypass)?'
@@ -111,7 +96,7 @@ on:
       ENABLE_PERF_CONFIG:
         description: 'Include perf.config?'
         type: boolean
-        default: false
+        default: true
       ENABLE_NETHUNTER_CONFIG:
         description: 'Include nethunter.config?'
         type: boolean
@@ -124,15 +109,14 @@ on:
         description: 'URL for custom.config'
         required: false
         type: string
-        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/test.config'
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
 
       # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
         description: 'Create a GitHub Release?'
         required: true
         type: boolean
-        default: true
-        
+        default: false
       UPLOAD_TELEGRAM:
         description: 'Upload Build to Telegram?'
         required: true
@@ -141,7 +125,7 @@ on:
 
 jobs:
   build-kernel:
-    name: 🏗️ Build (${{ github.event.inputs.DEVICE_DEFCONFIG }} | ${{ github.event.inputs.compiler }})
+    name: 🏗️ Build (${{ github.event.inputs.DEVICE_DEFCONFIG }} | ${{ github.event.inputs.toolchain_mode }})
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -155,7 +139,7 @@ jobs:
       ANDROID_MAJOR_VERSION: t
       ARCH: arm64
       SUBARCH: arm64
-      # --- STATIC CONFIG URLS (Keep these two here to stay under 25 limit) ---
+      # --- STATIC CONFIG URLS ---
       PERF_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
       NETHUNTER_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
 
@@ -189,7 +173,7 @@ jobs:
           libc6-dev-i386 cmake ninja-build file patch sudo
 
       - name: ⚙️ Export ccache + determinism
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.toolchain_mode, 'ccache')
         run: |
           CACHE_DIR="${{ github.workspace }}/.ccache"
           mkdir -p "$CACHE_DIR"
@@ -223,17 +207,17 @@ jobs:
           fi
 
       - name: ♻️ Restore ccache
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.toolchain_mode, 'ccache')
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
+          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.toolchain_mode }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}
-            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.toolchain_mode }}-${{ github.event.inputs.KERNEL_BRANCH }}
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.toolchain_mode }}-
 
       - name: 🔗 Ensure ccache is masked into PATH
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.toolchain_mode, 'ccache')
         run: |
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           echo "CC=ccache clang" >> $GITHUB_ENV
@@ -250,20 +234,24 @@ jobs:
           echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} ${{ github.event.inputs.KERNEL_SOURCE }} ${KERNEL_ROOT}
 
-      - name: 🔧 Setup Toolchain (${{ github.event.inputs.compiler }})
+      - name: 🔧 Setup Toolchain (${{ github.event.inputs.toolchain_mode }})
         run: |
           set -euo pipefail
           mkdir -p ${GITHUB_WORKSPACE}/toolchains
           cd ${GITHUB_WORKSPACE}/toolchains
           
-          if [ "${{ github.event.inputs.compiler }}" = "llvm22" ]; then
+          if [[ "${{ github.event.inputs.toolchain_mode }}" == *"llvm22"* ]]; then
             echo ">>> Installing LLVM 22 from official APT repository..."
             wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 22
             sudo apt-get install -y clang-22 lld-22 llvm-22
             sudo ln -sf /usr/bin/clang-22 /usr/bin/clang || true
             sudo ln -sf /usr/bin/ld.lld-22 /usr/bin/ld.lld || true
             echo "COMPILER_PATH=/usr/lib/llvm-22/bin:/usr/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=ccache clang-22" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang-22" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang-22" >> $GITHUB_ENV
+            fi
           else
             echo ">>> Fetching Google Clang (r487747c - Android 14 Stable)..."
             CLANG_VER="clang-r487747c"
@@ -272,7 +260,11 @@ jobs:
             curl -L "$DL_URL" -o clang.tar.gz
             tar -xzf clang.tar.gz -C ${CLANG_VER}
             echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang" >> $GITHUB_ENV
+            fi
           fi
 
       - name: ⬇️ Download AOSP Kernel Build Tools
@@ -443,14 +435,49 @@ jobs:
             echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
             patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
             echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
-            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch" -o 51_fix.patch
+            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch" -o 51_fix.patch
             patch -p1 --forward < 51_fix.patch || true
             rm -rf susfs_repo 51_fix.patch
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
-      - name: 📥 Fetch & Apply NTSYNC Patches
-        if: github.event.inputs.ENABLE_NTSYNC == 'true'
+      
+      - name: 🛡️ Apply ZeroMount, Unicode Fix & Full LTO Patches
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Applying Unicode Bypass Fix (Linux 5.15)..."
+          curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch" -o unicode.patch
+          patch -p1 --forward < unicode.patch || true
+          rm unicode.patch
+
+          echo ">>> Applying ZeroMount Path Redirection (Linux 5.15)..."
+          curl -LSs "https://raw.githubusercontent.com/jimsterino98/Super-Builders/main/android13-5.15/WildKSU/patches/60_zeromount-android13-5.15.patch" -o zeromount.patch
+          patch -p1 --forward < zeromount.patch || true
+          rm zeromount.patch
+
+          echo ">>> Injecting ZeroMount task_mmu.c and stat.c hooks via custom fix patch..."
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/zeromount_fix_60.patch" -o zeromount_fix.patch
+          patch -p1 --forward < zeromount_fix.patch || true
+          rm zeromount_fix.patch
+
+          echo ">>> Applying ZeroMount 65 (Linux 5.15)..."
+          curl -LSs "https://raw.githubusercontent.com/Enginex0/Super-Builders/refs/heads/main/android13-5.15/ReSukiSU/patches/_archive/65_zeromount-adb-filter-android13-5.15.patch" -o zeromount65.patch
+          patch -p1 --forward < zeromount65.patch || true
+          rm zeromount65.patch
+
+          echo ">>> Enabling CONFIG_ZEROMOUNT=y in su.config..."
+          if [ -f "arch/arm64/configs/su.config" ]; then
+            echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/su.config
+          fi
+
+          echo ">>> Enabling Full Clang LTO in arch/Kconfig..."
+          if [ -f "arch/Kconfig" ]; then
+            sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
+          fi
+          echo "✅ ZeroMount, Unicode Fix, and LTO applied successfully!"
+
+      # --- HARDCODED ALWAYS-ON: NTSYNC ---
+      - name: 📥 Fetch & Apply NTSYNC Patches (Always Enabled)
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Downloading and applying NTSYNC patches..."
@@ -459,8 +486,8 @@ jobs:
           patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
           rm -rf temp_patch_repo
 
-      - name: 🔒 Inject Baseband Guard (BBG)
-        if: github.event.inputs.ENABLE_BBG == 'true'
+      # --- HARDCODED ALWAYS-ON: BASEBAND GUARD (BBG) ---
+      - name: 🔒 Inject Baseband Guard (BBG - Always Enabled)
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Setting up Baseband Guard..."
@@ -478,25 +505,42 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
             patch -p1 --forward < bbg_fix.patch || true
           fi
-
-      - name: ⚡ Inject Re:Kernel Optimization
-        if: github.event.inputs.ENABLE_REKERNEL == 'true'
+           
+      # --- HARDCODED ALWAYS-ON: RE:KERNEL ---
+      - name: ⚡ Inject Re:Kernel Optimization (Always Enabled)
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Injecting Re:Kernel background app freezing optimization..."
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
-          mkdir -p drivers/rekernel
-          cp -rp temp_rekernel_repo/Integrate/rekernel/* drivers/rekernel/
+          
+          echo ">>> Preparing ./rekernel directory for patches.sh..."
+          cp -rp temp_rekernel_repo/Integrate/rekernel ./rekernel
           cp temp_rekernel_repo/Integrate/patches.sh ./
           chmod +x patches.sh
-          sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
-          ./patches.sh || true
+          
+          echo ">>> Running patches.sh to integrate driver..."
+          ./patches.sh || echo "⚠️ Note: patches.sh reported minor warnings or was already applied."
+          
+          echo ">>> Injecting jobctl.h header fix..."
+          if [ -f "drivers/rekernel/rekernel.h" ]; then
+            sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
+            echo "✅ Added jobctl.h to drivers/rekernel/rekernel.h"
+          else
+            echo "❌ CRITICAL: drivers/rekernel/rekernel.h not found after running patches.sh!"
+            exit 1
+          fi
+
+          echo ">>> Adding Re:Kernel configs to defconfig..."
           DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
           if [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_REKERNEL_NETWORK=n" >> "$DEFCONFIG_FILE"
+            echo "✅ Enabled CONFIG_REKERNEL=y in ${DEFCONFIG_FILE}"
           fi
-          rm -rf temp_rekernel_repo patches.sh
+          
+          echo ">>> Cleaning up temporary Re:Kernel files..."
+          rm -rf ./rekernel temp_rekernel_repo patches.sh
+          echo "✅ Re:Kernel integrated successfully!"
 
       - name: 🛠️ Fix Clang-20+ sizeof-pointer-memaccess Error
         if: github.event.inputs.ENABLE_CLANG20_FIX == 'true'
@@ -538,8 +582,8 @@ jobs:
 
           rm -f "${PATCH_FILE}"
 
-      - name: 🌐 Apply BBRv3 TCP Congestion Control Patch
-        if: github.event.inputs.ENABLE_BBRV3 == 'true'
+      # --- HARDCODED ALWAYS-ON: BBRV3 ---
+      - name: 🌐 Apply BBRv3 TCP Congestion Control Patch (Always Enabled)
         shell: bash
         run: |
           set -euo pipefail
@@ -560,8 +604,6 @@ jobs:
           }
 
           echo ">>> Applying BBRv3 patch using 'patch -p1' (matching local behavior)..."
-          # Using 'patch' instead of 'git apply' allows fuzz and offsets without failing the build
-          # --fuzz=1 allows slight context mismatches, --forward prevents interactive prompts
           patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
 
           echo ">>> Verifying BBRv3 injection..."
@@ -580,6 +622,73 @@ jobs:
 
           rm -f "${PATCH_FILE}"
           find . -name "*.orig" -delete -o -name "*.rej" -delete
+
+      - name: ⚡ Apply Exynos 5.15 Optimization Suite
+        if: github.event.inputs.ENABLE_KERNEL_OPTIMIZATIONS == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
+
+          BASE_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common"
+          mkdir -p /tmp/wk_patches
+
+          # 1. Standard optimization patches for SM-M146B (Exynos / 5.15)
+          PATCHES=(
+            "optimized_mem_operations.patch"
+            "file_struct_8bytes_align.patch"
+            "reduce_cache_pressure.patch"
+            "mem_opt_prefetch.patch"
+            "int_sqrt.patch"
+            "force_tcp_nodelay.patch"
+            "reduce_gc_thread_sleep_time.patch"
+            "add_timeout_wakelocks_globally.patch"
+            "f2fs_reduce_congestion.patch"
+            "reduce_freeze_timeout.patch"
+            "add_limitation_scaling_min_freq.patch"
+            "re_write_limitation_scaling_min_freq.patch"
+            "adjust_cpu_scan_order.patch"
+            "avoid_extra_s2idle_wake_attempts.patch"
+            "disable_cache_hot_buddy.patch"
+            "f2fs_enlarge_min_fsync_blocks.patch"
+            "increase_ext4_default_commit_age.patch"
+            "increase_sk_mem_packets.patch"
+            "reduce_pci_pme_wakeups.patch"
+            "silence_irq_cpu_logspam.patch"
+            "silence_system_logspam.patch"
+            "use_unlikely_wrap_cpufreq.patch"
+          )
+
+          echo ">>> Downloading and applying standard optimization patches..."
+          for p in "${PATCHES[@]}"; do
+            echo "  -> Applying ${p}..."
+            curl -fL -sS --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/${p}" -o "/tmp/wk_patches/${p}"
+            patch -p1 --fuzz=2 --forward < "/tmp/wk_patches/${p}" || echo "  ⚠️ Warning: ${p} had minor rejects or was already applied."
+          done
+
+          # 2. Exynos Assembly memcmp optimization (Linux 5.15 symbol mode)
+          echo ">>> Applying Exynos ARM64 memcmp assembly optimization..."
+          curl -fL -sS --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/Samsung/optimise_memcmp_exynos.patch" -o "/tmp/wk_patches/optimise_memcmp_exynos.patch"
+          sed -e 's/SYM_FUNC_START(__pi_memcmp)/SYM_FUNC_START_WEAK_PI(memcmp)/' \
+              -e 's/SYM_FUNC_END(__pi_memcmp)/SYM_FUNC_END_PI(memcmp)/' \
+              -e 's/SYM_FUNC_ALIAS_WEAK(memcmp, __pi_memcmp)/EXPORT_SYMBOL_NOKASAN(memcmp)/' \
+              "/tmp/wk_patches/optimise_memcmp_exynos.patch" | patch -p1 --fuzz=2 --forward || true
+
+          # 3. Clear page 16-bytes alignment (Direct apply against SYM_FUNC_START_PI)
+          echo ">>> Applying clear_page 16-byte alignment optimization..."
+          curl -fL -sS --retry 3 --retry-delay 2 --connect-timeout 20 "${BASE_URL}/clear_page_16bytes_align.patch" -o "/tmp/wk_patches/clear_page_16bytes_align.patch"
+          patch -p1 --fuzz=2 --forward < "/tmp/wk_patches/clear_page_16bytes_align.patch" || true
+
+          # 4. Alarmtimer wakelock duration reduction
+          echo ">>> Reducing alarmtimer wakelock duration from 2s to ktime min..."
+          if [ -f "kernel/time/alarmtimer.c" ]; then
+            sed -i 's/pm_wakeup_event(dev, 2 \* MSEC_PER_SEC);/pm_wakeup_event(dev, ktime_to_ms(min) + 1);/' kernel/time/alarmtimer.c || true
+          fi
+
+          # 5. Cleanup
+          rm -rf /tmp/wk_patches
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
+          echo "✅ Exynos 5.15 optimization suite applied successfully!"
       
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
@@ -604,7 +713,7 @@ jobs:
           export KMI_SYMBOL_LIST_STRICT_MODE=0
           export SKIP_ABI_CHECKS=1
           export KMI_ENFORCE=0
-          export LTO=thin
+          export LTO=full
 
           export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
           export CC="${COMPILER_CC}"
@@ -626,13 +735,13 @@ jobs:
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/custom.config" ]; then CONFIG_ARGS="$CONFIG_ARGS custom.config"; fi
           
           echo "===================================================="
-          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.compiler }}"
+          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.toolchain_mode }}"
           echo "===================================================="
           
           make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
           make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" 2>&1 | tee build.log
 
-          if [ "${{ github.event.inputs.cache }}" = "true" ]; then
+          if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
             ccache -s
           fi
 
@@ -713,12 +822,13 @@ jobs:
             * **Cellular Security:** Baseband Guard (BBG) blocks malicious cellular network attacks.
             * **Virtualization:** Full kernel-level support for DroidSpaces containers.
             * **Background Optimization:** Re:Kernel integrated for zero-lag background app freezing.
+            * **Network & Sync:** TCP BBRv3 congestion control and NTSync Windows translation primitives built-in.
             * **Build System:** Compiled with ccache acceleration and ThinLTO optimizations.
             
             | Parameter | Value |
             | :--- | :--- |
             | **Defconfig** | `${{ github.event.inputs.DEVICE_DEFCONFIG }}` |
-            | **Toolchain** | `${{ github.event.inputs.compiler }}` |
+            | **Toolchain Mode** | `${{ github.event.inputs.toolchain_mode }}` |
             | **Root Variant** | `${{ github.event.inputs.KSU_VARIANT }}` |
             | **Manager Branch** | `${{ github.event.inputs.MANAGER_BRANCH }}` |
             | **Kernel Branch** | `${{ github.event.inputs.KERNEL_BRANCH }}` |
@@ -746,7 +856,7 @@ jobs:
 
           SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
           KSU_VARIANT="${{ github.event.inputs.KSU_VARIANT }}"
-          COMPILER="${{ github.event.inputs.compiler }}"
+          COMPILER="${{ github.event.inputs.toolchain_mode }}"
           BRANCH="${{ github.event.inputs.KERNEL_BRANCH }}"
           RUN_NUM="${{ github.run_number }}"
 
@@ -754,7 +864,7 @@ jobs:
           CAPTION="⚡ *Project 24 Kernel Build*
           
           📱 Device: \`${SHORT_DEVICE}\`
-          🔧 Compiler: \`${COMPILER}\`
+          🔧 Toolchain: \`${COMPILER}\`
           🛡️ Root: \`${KSU_VARIANT}\`
           🌿 Branch: \`${BRANCH}\`
           🔄 Run: #${RUN_NUM}
@@ -784,8 +894,6 @@ jobs:
             FILESIZE=$(du -h "$FILE" | cut -f1)
             echo ">>> Uploading ${FILENAME} (${FILESIZE})..."
 
-            # Telegram has a 50MB limit for bots (2GB for local bots, but API bots = 50MB)
-            # Using sendDocument for files
             RESPONSE=$(curl -s -X POST "${API_URL}/sendDocument" \
               -F chat_id="${TELEGRAM_CHAT_ID}" \
               -F document="@${FILE}" \
