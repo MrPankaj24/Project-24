@@ -713,7 +713,7 @@ jobs:
           export KMI_SYMBOL_LIST_STRICT_MODE=0
           export SKIP_ABI_CHECKS=1
           export KMI_ENFORCE=0
-          export LTO=thin
+          export LTO=full
 
           export PATH="${COMPILER_PATH}:${AOSP_TOOLS_PATH}:$PATH"
           export CC="${COMPILER_CC}"
