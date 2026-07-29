@@ -71,10 +71,6 @@ on:
         description: 'Apply WildKernels Exynos 5.15 Optimization Patch Suite?'
         type: boolean
         default: true
-      ENABLE_REKERNEL:
-        description: 'Inject Re:Kernel (Background App Freezing Optimization)?'
-        type: boolean
-        default: true
       ENABLE_DROIDSPACE:
         description: 'Apply DroidSpaces Virtualization Patch?'
         type: boolean
@@ -474,28 +470,42 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
             patch -p1 --forward < bbg_fix.patch || true
           fi
-          
-      - name: ⚡ Inject Re:Kernel Optimization
-        if: github.event.inputs.ENABLE_REKERNEL == 'true'
+           
+      # --- HARDCODED ALWAYS-ON: RE:KERNEL ---
+      - name: ⚡ Inject Re:Kernel Optimization (Always Enabled)
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Injecting Re:Kernel background app freezing optimization..."
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git temp_rekernel_repo
-          # Copy to ./rekernel in KERNEL_ROOT so patches.sh can find it
+          
+          echo ">>> Preparing ./rekernel directory for patches.sh..."
           cp -rp temp_rekernel_repo/Integrate/rekernel ./rekernel
           cp temp_rekernel_repo/Integrate/patches.sh ./
           chmod +x patches.sh
-          ./patches.sh || true
-          # Now modify the header after patches.sh has copied it into drivers/rekernel/
+          
+          echo ">>> Running patches.sh to integrate driver..."
+          ./patches.sh || echo "⚠️ Note: patches.sh reported minor warnings or was already applied."
+          
+          echo ">>> Injecting jobctl.h header fix..."
           if [ -f "drivers/rekernel/rekernel.h" ]; then
             sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
+            echo "✅ Added jobctl.h to drivers/rekernel/rekernel.h"
+          else
+            echo "❌ CRITICAL: drivers/rekernel/rekernel.h not found after running patches.sh!"
+            exit 1
           fi
+
+          echo ">>> Adding Re:Kernel configs to defconfig..."
           DEFCONFIG_FILE="arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}"
           if [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_REKERNEL_NETWORK=n" >> "$DEFCONFIG_FILE"
+            echo "✅ Enabled CONFIG_REKERNEL=y in ${DEFCONFIG_FILE}"
           fi
+          
+          echo ">>> Cleaning up temporary Re:Kernel files..."
           rm -rf ./rekernel temp_rekernel_repo patches.sh
+          echo "✅ Re:Kernel integrated successfully!"
 
       - name: 🛠️ Fix Clang-20+ sizeof-pointer-memaccess Error
         if: github.event.inputs.ENABLE_CLANG20_FIX == 'true'
