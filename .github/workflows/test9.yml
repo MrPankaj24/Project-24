@@ -68,7 +68,7 @@ on:
 
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
-        description: 'Apply WildKernels Exynos 5.15 Optimization Patch Suite?'
+        description: 'Apply Exynos 5.15 Optimization Patch Suite?'
         type: boolean
         default: true
       ENABLE_DROIDSPACE:
@@ -623,7 +623,7 @@ jobs:
           rm -f "${PATCH_FILE}"
           find . -name "*.orig" -delete -o -name "*.rej" -delete
 
-      - name: ⚡ Apply WildKernels Exynos 5.15 Optimization Suite
+      - name: ⚡ Apply Exynos 5.15 Optimization Suite
         if: github.event.inputs.ENABLE_KERNEL_OPTIMIZATIONS == 'true'
         shell: bash
         run: |
@@ -633,7 +633,7 @@ jobs:
           BASE_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common"
           mkdir -p /tmp/wk_patches
 
-          # 1. Standard WildKernels optimization patches for SM-M146B (Exynos / 5.15)
+          # 1. Standard optimization patches for SM-M146B (Exynos / 5.15)
           PATCHES=(
             "optimized_mem_operations.patch"
             "file_struct_8bytes_align.patch"
@@ -688,7 +688,7 @@ jobs:
           # 5. Cleanup
           rm -rf /tmp/wk_patches
           find . -name "*.orig" -delete -o -name "*.rej" -delete
-          echo "✅ WildKernels Exynos 5.15 optimization suite applied successfully!"
+          echo "✅ Exynos 5.15 optimization suite applied successfully!"
       
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
