@@ -23,21 +23,18 @@ on:
         required: true
         type: string
         default: 'm14x_defconfig'
-      
-      # --- 2. TOOLCHAIN & PERFORMANCE ---
-      compiler:
-        description: 'Compiler Toolchain'
+
+      # --- 2. TOOLCHAIN & ACCELERATION (Combined to stay under 25 limit) ---
+      toolchain_mode:
+        description: 'Compiler & CCache Selection'
         required: true
         type: choice
         options:
-          - llvm22
-          - google-clang
-        default: llvm22
-      cache:
-        description: 'Enable ccache acceleration'
-        required: true
-        type: boolean
-        default: true
+          - llvm22-ccache
+          - llvm22-nocache
+          - google-clang-ccache
+          - google-clang-nocache
+        default: llvm22-ccache
 
       # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
       ENABLE_KSU:
@@ -69,14 +66,9 @@ on:
         type: string
         default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
 
+      # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
         description: 'Apply WildKernels Exynos 5.15 Optimization Patch Suite?'
-        type: boolean
-        default: true  
-
-      # --- 4. SECURITY & FEATURE PATCH CHECKBOXES ---
-      ENABLE_BBG:
-        description: 'Inject Baseband Guard (BBG Cellular Security)?'
         type: boolean
         default: true
       ENABLE_REKERNEL:
@@ -87,10 +79,6 @@ on:
         description: 'Apply DroidSpaces Virtualization Patch?'
         type: boolean
         default: true
-      ENABLE_NTSYNC:
-        description: 'Apply NTSYNC (Wine/Proton Synchronization) Patches?'
-        type: boolean
-        default: true
       ENABLE_CLANG20_FIX:
         description: 'Apply Clang-20/22 sizeof-pointer-memaccess OVT Touchscreen Fix?'
         type: boolean
@@ -99,11 +87,7 @@ on:
         description: 'Apply Disable CECs+ Patch?'
         type: boolean
         default: true
-      ENABLE_BBRV3:
-        description: 'Apply BBRv3 TCP Congestion Control Patch?'
-        type: boolean
-        default: true
-      
+
       # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
         description: 'Bake generated su.config (SUSFS & Anti-Root Bypass)?'
@@ -136,8 +120,7 @@ on:
         description: 'Create a GitHub Release?'
         required: true
         type: boolean
-        default: true
-        
+        default: false
       UPLOAD_TELEGRAM:
         description: 'Upload Build to Telegram?'
         required: true
@@ -146,7 +129,7 @@ on:
 
 jobs:
   build-kernel:
-    name: 🏗️ Build (${{ github.event.inputs.DEVICE_DEFCONFIG }} | ${{ github.event.inputs.compiler }})
+    name: 🏗️ Build (${{ github.event.inputs.DEVICE_DEFCONFIG }} | ${{ github.event.inputs.toolchain_mode }})
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -160,7 +143,7 @@ jobs:
       ANDROID_MAJOR_VERSION: t
       ARCH: arm64
       SUBARCH: arm64
-      # --- STATIC CONFIG URLS (Keep these two here to stay under 25 limit) ---
+      # --- STATIC CONFIG URLS ---
       PERF_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
       NETHUNTER_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
 
@@ -194,7 +177,7 @@ jobs:
           libc6-dev-i386 cmake ninja-build file patch sudo
 
       - name: ⚙️ Export ccache + determinism
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.toolchain_mode, 'ccache')
         run: |
           CACHE_DIR="${{ github.workspace }}/.ccache"
           mkdir -p "$CACHE_DIR"
@@ -228,17 +211,17 @@ jobs:
           fi
 
       - name: ♻️ Restore ccache
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.toolchain_mode, 'ccache')
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
+          key: ccache-${{ runner.os }}-make-${{ github.event.inputs.toolchain_mode }}-${{ github.event.inputs.KERNEL_BRANCH }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-${{ github.event.inputs.KERNEL_BRANCH }}
-            ccache-${{ runner.os }}-make-${{ github.event.inputs.compiler }}-
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.toolchain_mode }}-${{ github.event.inputs.KERNEL_BRANCH }}
+            ccache-${{ runner.os }}-make-${{ github.event.inputs.toolchain_mode }}-
 
       - name: 🔗 Ensure ccache is masked into PATH
-        if: github.event.inputs.cache == 'true'
+        if: contains(github.event.inputs.toolchain_mode, 'ccache')
         run: |
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           echo "CC=ccache clang" >> $GITHUB_ENV
@@ -255,20 +238,24 @@ jobs:
           echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
           git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }} ${{ github.event.inputs.KERNEL_SOURCE }} ${KERNEL_ROOT}
 
-      - name: 🔧 Setup Toolchain (${{ github.event.inputs.compiler }})
+      - name: 🔧 Setup Toolchain (${{ github.event.inputs.toolchain_mode }})
         run: |
           set -euo pipefail
           mkdir -p ${GITHUB_WORKSPACE}/toolchains
           cd ${GITHUB_WORKSPACE}/toolchains
           
-          if [ "${{ github.event.inputs.compiler }}" = "llvm22" ]; then
+          if [[ "${{ github.event.inputs.toolchain_mode }}" == *"llvm22"* ]]; then
             echo ">>> Installing LLVM 22 from official APT repository..."
             wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 22
             sudo apt-get install -y clang-22 lld-22 llvm-22
             sudo ln -sf /usr/bin/clang-22 /usr/bin/clang || true
             sudo ln -sf /usr/bin/ld.lld-22 /usr/bin/ld.lld || true
             echo "COMPILER_PATH=/usr/lib/llvm-22/bin:/usr/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=ccache clang-22" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang-22" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang-22" >> $GITHUB_ENV
+            fi
           else
             echo ">>> Fetching Google Clang (r487747c - Android 14 Stable)..."
             CLANG_VER="clang-r487747c"
@@ -277,7 +264,11 @@ jobs:
             curl -L "$DL_URL" -o clang.tar.gz
             tar -xzf clang.tar.gz -C ${CLANG_VER}
             echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
-            echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang" >> $GITHUB_ENV
+            fi
           fi
 
       - name: ⬇️ Download AOSP Kernel Build Tools
@@ -454,8 +445,8 @@ jobs:
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
-      - name: 📥 Fetch & Apply NTSYNC Patches
-        if: github.event.inputs.ENABLE_NTSYNC == 'true'
+      # --- HARDCODED ALWAYS-ON: NTSYNC ---
+      - name: 📥 Fetch & Apply NTSYNC Patches (Always Enabled)
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Downloading and applying NTSYNC patches..."
@@ -464,8 +455,8 @@ jobs:
           patch -p1 --forward < temp_patch_repo/ntsync_compat_android13-5.15.patch || true
           rm -rf temp_patch_repo
 
-      - name: 🔒 Inject Baseband Guard (BBG)
-        if: github.event.inputs.ENABLE_BBG == 'true'
+      # --- HARDCODED ALWAYS-ON: BASEBAND GUARD (BBG) ---
+      - name: 🔒 Inject Baseband Guard (BBG - Always Enabled)
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Setting up Baseband Guard..."
@@ -543,8 +534,8 @@ jobs:
 
           rm -f "${PATCH_FILE}"
 
-      - name: 🌐 Apply BBRv3 TCP Congestion Control Patch
-        if: github.event.inputs.ENABLE_BBRV3 == 'true'
+      # --- HARDCODED ALWAYS-ON: BBRV3 ---
+      - name: 🌐 Apply BBRv3 TCP Congestion Control Patch (Always Enabled)
         shell: bash
         run: |
           set -euo pipefail
@@ -565,8 +556,6 @@ jobs:
           }
 
           echo ">>> Applying BBRv3 patch using 'patch -p1' (matching local behavior)..."
-          # Using 'patch' instead of 'git apply' allows fuzz and offsets without failing the build
-          # --fuzz=1 allows slight context mismatches, --forward prevents interactive prompts
           patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
 
           echo ">>> Verifying BBRv3 injection..."
@@ -652,7 +641,7 @@ jobs:
           # 5. Cleanup
           rm -rf /tmp/wk_patches
           find . -name "*.orig" -delete -o -name "*.rej" -delete
-          echo "✅ WildKernels Exynos 5.15 optimization suite applied successfully!"    
+          echo "✅ WildKernels Exynos 5.15 optimization suite applied successfully!"
       
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
@@ -699,13 +688,13 @@ jobs:
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/custom.config" ]; then CONFIG_ARGS="$CONFIG_ARGS custom.config"; fi
           
           echo "===================================================="
-          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.compiler }}"
+          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.toolchain_mode }}"
           echo "===================================================="
           
           make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
           make -j$(nproc --all) O="${OUTDIR}" CC="${CC}" 2>&1 | tee build.log
 
-          if [ "${{ github.event.inputs.cache }}" = "true" ]; then
+          if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
             ccache -s
           fi
 
@@ -786,12 +775,13 @@ jobs:
             * **Cellular Security:** Baseband Guard (BBG) blocks malicious cellular network attacks.
             * **Virtualization:** Full kernel-level support for DroidSpaces containers.
             * **Background Optimization:** Re:Kernel integrated for zero-lag background app freezing.
+            * **Network & Sync:** TCP BBRv3 congestion control and NTSync Windows translation primitives built-in.
             * **Build System:** Compiled with ccache acceleration and ThinLTO optimizations.
             
             | Parameter | Value |
             | :--- | :--- |
             | **Defconfig** | `${{ github.event.inputs.DEVICE_DEFCONFIG }}` |
-            | **Toolchain** | `${{ github.event.inputs.compiler }}` |
+            | **Toolchain Mode** | `${{ github.event.inputs.toolchain_mode }}` |
             | **Root Variant** | `${{ github.event.inputs.KSU_VARIANT }}` |
             | **Manager Branch** | `${{ github.event.inputs.MANAGER_BRANCH }}` |
             | **Kernel Branch** | `${{ github.event.inputs.KERNEL_BRANCH }}` |
@@ -819,7 +809,7 @@ jobs:
 
           SHORT_DEVICE=$(echo "${{ github.event.inputs.DEVICE_DEFCONFIG }}" | sed 's/_defconfig//')
           KSU_VARIANT="${{ github.event.inputs.KSU_VARIANT }}"
-          COMPILER="${{ github.event.inputs.compiler }}"
+          COMPILER="${{ github.event.inputs.toolchain_mode }}"
           BRANCH="${{ github.event.inputs.KERNEL_BRANCH }}"
           RUN_NUM="${{ github.run_number }}"
 
@@ -827,7 +817,7 @@ jobs:
           CAPTION="⚡ *Project 24 Kernel Build*
           
           📱 Device: \`${SHORT_DEVICE}\`
-          🔧 Compiler: \`${COMPILER}\`
+          🔧 Toolchain: \`${COMPILER}\`
           🛡️ Root: \`${KSU_VARIANT}\`
           🌿 Branch: \`${BRANCH}\`
           🔄 Run: #${RUN_NUM}
@@ -857,8 +847,6 @@ jobs:
             FILESIZE=$(du -h "$FILE" | cut -f1)
             echo ">>> Uploading ${FILENAME} (${FILESIZE})..."
 
-            # Telegram has a 50MB limit for bots (2GB for local bots, but API bots = 50MB)
-            # Using sendDocument for files
             RESPONSE=$(curl -s -X POST "${API_URL}/sendDocument" \
               -F chat_id="${TELEGRAM_CHAT_ID}" \
               -F document="@${FILE}" \
