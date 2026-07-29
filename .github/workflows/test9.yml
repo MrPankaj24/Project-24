@@ -96,7 +96,7 @@ on:
       ENABLE_PERF_CONFIG:
         description: 'Include perf.config?'
         type: boolean
-        default: false
+        default: true
       ENABLE_NETHUNTER_CONFIG:
         description: 'Include nethunter.config?'
         type: boolean
@@ -109,7 +109,7 @@ on:
         description: 'URL for custom.config'
         required: false
         type: string
-        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/test.config'
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
 
       # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
