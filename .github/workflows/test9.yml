@@ -64,7 +64,7 @@ on:
         description: 'SUSFS Commit SHA (Leave empty for latest)'
         required: false
         type: string
-        default: '9f0415bb2c8fc581e93d384e09aba088bd36733a'
+        default: 'fbb7462dd4cca04c7d99a56500fe55fe51c3d6a3'
 
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
@@ -435,7 +435,7 @@ jobs:
             echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
             patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
             echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
-            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/51_fix_susfs_rejects.patch" -o 51_fix.patch
+            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch" -o 51_fix.patch
             patch -p1 --forward < 51_fix.patch || true
             rm -rf susfs_repo 51_fix.patch
             find . -name "*.orig" -delete -o -name "*.rej" -delete
