@@ -94,7 +94,11 @@ on:
         description: 'Apply Disable CECs+ Patch?'
         type: boolean
         default: true
-
+      ENABLE_BBRV3:
+        description: 'Apply BBRv3 TCP Congestion Control Patch?'
+        type: boolean
+        default: true
+      
       # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
         description: 'Bake generated su.config (SUSFS & Anti-Root Bypass)?'
@@ -120,7 +124,7 @@ on:
         description: 'URL for custom.config'
         required: false
         type: string
-        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
+        default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/test.config'
 
       # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
@@ -534,6 +538,49 @@ jobs:
 
           rm -f "${PATCH_FILE}"
 
+      - name: 🌐 Apply BBRv3 TCP Congestion Control Patch
+        if: github.event.inputs.ENABLE_BBRV3 == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
+
+          PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android13-5.15.patch"
+          PATCH_FILE="bbrv3.patch"
+
+          echo ">>> Downloading BBRv3 patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+
+          echo ">>> Validating patch..."
+          test -s "${PATCH_FILE}" || { echo "❌ Patch file is empty"; exit 1; }
+          head -n 1 "${PATCH_FILE}" | grep -qE '^(diff --git|From )' || {
+            echo "❌ Not a valid patch file. First lines:"
+            head -n 20 "${PATCH_FILE}"
+            exit 1
+          }
+
+          echo ">>> Applying BBRv3 patch using 'patch -p1' (matching local behavior)..."
+          # Using 'patch' instead of 'git apply' allows fuzz and offsets without failing the build
+          # --fuzz=1 allows slight context mismatches, --forward prevents interactive prompts
+          patch -p1 --fuzz=1 --forward < "${PATCH_FILE}"
+
+          echo ">>> Verifying BBRv3 injection..."
+          if [ -f "net/ipv4/tcp_bbr3.c" ]; then
+            echo "✅ BBRv3 core source (tcp_bbr3.c) successfully injected!"
+          else
+            echo "❌ CRITICAL: tcp_bbr3.c is missing. BBRv3 will not compile."
+            exit 1
+          fi
+
+          if grep -q "bbr3" net/ipv4/Kconfig; then
+            echo "✅ BBRv3 Kconfig entry successfully injected!"
+          else
+            echo "⚠️ WARNING: BBRv3 Kconfig entry missing. BBRv3 might not be selectable."
+          fi
+
+          rm -f "${PATCH_FILE}"
+          find . -name "*.orig" -delete -o -name "*.rej" -delete
+      
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
           cd ${KERNEL_ROOT}
