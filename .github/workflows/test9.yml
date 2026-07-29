@@ -1,4 +1,4 @@
-name: 🏗️ test Project24 Custom Kernel Build test (Blueprint Edition)
+name: 🏗️test Project24 Custom Kernel Build test (Blueprint Edition)
 
 permissions:
   contents: write
@@ -24,7 +24,7 @@ on:
         type: string
         default: 'm14x_defconfig'
 
-      # --- 2. TOOLCHAIN & ACCELERATION (Combined to stay under 25 limit) ---
+      # --- 2. TOOLCHAIN & ACCELERATION ---
       toolchain_mode:
         description: 'Compiler & CCache Selection'
         required: true
@@ -65,6 +65,10 @@ on:
         required: false
         type: string
         default: 'fbb7462dd4cca04c7d99a56500fe55fe51c3d6a3'
+      ENABLE_NOMOUNT:
+        description: 'Apply NoMount Path & Mount Stealth Patch?'
+        type: boolean
+        default: true
 
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
@@ -139,7 +143,6 @@ jobs:
       ANDROID_MAJOR_VERSION: t
       ARCH: arm64
       SUBARCH: arm64
-      # --- STATIC CONFIG URLS ---
       PERF_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/perf.config'
       NETHUNTER_CONFIG_URL: 'https://github.com/MrPankaj24/kernel_common_modifications/blob/basic/arch/arm64/configs/nethunter.config'
 
@@ -376,7 +379,7 @@ jobs:
         run: |
           cd ${KERNEL_ROOT}
           echo ">>> Downloading and applying DroidSpaces patch..."
-          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_for_1330.patch" -o droidspace_1330.patch
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_1330.patch" -o droidspace_1330.patch
           patch -p1 --forward < droidspace_1330.patch || true
           rm droidspace_1330.patch
 
@@ -441,7 +444,27 @@ jobs:
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
-      
+      - name: 🛡️ Fetch & Apply NoMount Patch
+        if: github.event.inputs.ENABLE_NOMOUNT == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Cloning NoMount repository..."
+          git clone https://github.com/maxsteeel/nomount.git temp_nomount
+          
+          echo ">>> Copying nomount.c and nomount.h into fs/..."
+          cp temp_nomount/kernel/src/nomount.c fs/
+          cp temp_nomount/kernel/src/nomount.h fs/
+          
+          echo ">>> Applying NoMount 5.15 kernel integration patch..."
+          patch -p1 --forward < temp_nomount/kernel/patches/nomount_5.15_kernel_integration.patch || true
+          
+          rm -rf temp_nomount
+          
+          if [ -f "arch/arm64/configs/su.config" ]; then
+            echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/su.config
+          fi
+          echo "✅ NoMount integrated successfully!"
+
       - name: 🛡️ Apply ZeroMount, Unicode Fix & Full LTO Patches
         run: |
           cd ${KERNEL_ROOT}
@@ -474,7 +497,8 @@ jobs:
           if [ -f "arch/Kconfig" ]; then
             sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
           fi
-          echo "✅ ZeroMount, Unicode Fix, and LTO applied successfully!"
+
+          echo "✅ ZeroMount, Unicode Fix applied successfully!"
 
       # --- HARDCODED ALWAYS-ON: NTSYNC ---
       - name: 📥 Fetch & Apply NTSYNC Patches (Always Enabled)
@@ -505,7 +529,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/experimental/bbg/bbg_fix_get_link.patch" -o bbg_fix.patch
             patch -p1 --forward < bbg_fix.patch || true
           fi
-           
+            
       # --- HARDCODED ALWAYS-ON: RE:KERNEL ---
       - name: ⚡ Inject Re:Kernel Optimization (Always Enabled)
         run: |
@@ -708,7 +732,7 @@ jobs:
           cd ${KERNEL_ROOT}
           mkdir -p ${OUTDIR}
           
-          # --- ABI & KMI Settings (Nuke checks from Blueprint) ---
+          # --- ABI & KMI Settings ---
           export ABI_DEFINITION=
           export KMI_SYMBOL_LIST_STRICT_MODE=0
           export SKIP_ABI_CHECKS=1
@@ -818,7 +842,7 @@ jobs:
             > **DISCLAIMER:** This kernel is for experimental purposes. Flash at your own risk! Make sure you have a working backup before flashing.
 
             #### ✨ Core Features & Optimizations:
-            * **Root Stealth:** Integrated with KernelSU / SUSFS / Zeromount to bypass root detection.
+            * **Root Stealth:** Integrated with KernelSU / SUSFS / Zeromount / NoMount to bypass root detection.
             * **Cellular Security:** Baseband Guard (BBG) blocks malicious cellular network attacks.
             * **Virtualization:** Full kernel-level support for DroidSpaces containers.
             * **Background Optimization:** Re:Kernel integrated for zero-lag background app freezing.
@@ -848,7 +872,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # --- Validate secrets ---
           if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
             echo "❌ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set in repo secrets!"
             exit 1
@@ -860,7 +883,6 @@ jobs:
           BRANCH="${{ github.event.inputs.KERNEL_BRANCH }}"
           RUN_NUM="${{ github.run_number }}"
 
-          # --- Build caption message ---
           CAPTION="⚡ *Project 24 Kernel Build*
           
           📱 Device: \`${SHORT_DEVICE}\`
@@ -874,7 +896,6 @@ jobs:
 
           API_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 
-          # --- Send caption as a separate message first ---
           echo ">>> Sending build info message..."
           curl -s -X POST "${API_URL}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
@@ -883,7 +904,6 @@ jobs:
             -d disable_web_page_preview=true \
             | python3 -c "import sys,json; r=json.load(sys.stdin); print('✅ Message sent' if r.get('ok') else f'❌ Failed: {r}')"
 
-          # --- Upload each zip artifact ---
           ARTIFACT_DIR="${{ github.workspace }}/artifacts"
           UPLOADED=0
           FAILED=0
