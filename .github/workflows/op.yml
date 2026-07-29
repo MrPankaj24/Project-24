@@ -470,11 +470,7 @@ jobs:
             echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/su.config
           fi
 
-          echo ">>> Enabling Full Clang LTO in arch/Kconfig..."
-          if [ -f "arch/Kconfig" ]; then
-            sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
-          fi
-          echo "✅ ZeroMount, Unicode Fix, and LTO applied successfully!"
+          echo "✅ ZeroMount, Unicode Fix applied successfully!"
 
       # --- HARDCODED ALWAYS-ON: NTSYNC ---
       - name: 📥 Fetch & Apply NTSYNC Patches (Always Enabled)
