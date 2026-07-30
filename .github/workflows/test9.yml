@@ -385,7 +385,7 @@ jobs:
         if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT != 'None'
         run: |
           cd ${KERNEL_ROOT}
-          rm -rf KernelSU drivers/kernelsu
+          rm -rf KernelSU KernelSU-Next drivers/kernelsu
           
           CHOICE="${{ github.event.inputs.KSU_VARIANT }}"
           BRANCH="${{ github.event.inputs.MANAGER_BRANCH }}"
@@ -448,12 +448,19 @@ jobs:
             fi
             
             cd ..
-            # Rename to match standard KernelSU path for the symlink step below
+            # Rename to match standard KernelSU path for the workflow
             mv KernelSU-Next KernelSU
           fi
           
-          echo ">>> Symlinking drivers/kernelsu..."
-          ln -sf ../KernelSU drivers/kernelsu
+          echo ">>> Rebuilding drivers/kernelsu symlink..."
+          rm -f drivers/kernelsu
+          if [[ "$CHOICE" == "KSUN_OP" || "$CHOICE" == *"Official"* || "$CHOICE" == *"Next"* ]]; then
+            # Official KernelSU and KernelSU-Next keep files inside the 'kernel' subfolder
+            ln -sf ../KernelSU/kernel drivers/kernelsu
+          else
+            # ReSukiSU and wksu keep files in the root folder
+            ln -sf ../KernelSU drivers/kernelsu
+          fi
           
           # --- APPLY LOCKED SUSFS TO KERNEL TREE ---
           if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
