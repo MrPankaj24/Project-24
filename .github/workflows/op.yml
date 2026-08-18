@@ -343,9 +343,6 @@ jobs:
           CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE=0
           # CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE is not set
           # CONFIG_ALWAYS_ENFORCING is not set
-          CONFIG_CMDLINE_BOOL=y
-          CONFIG_CMDLINE="androidboot.selinux=permissive enforcing=0"
-          CONFIG_CMDLINE_EXTEND=y
           EOF
           echo "✅ Generated arch/arm64/configs/permissive.config successfully!"
 
