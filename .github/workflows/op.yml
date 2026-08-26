@@ -444,40 +444,40 @@ jobs:
           fi
 
       
-      - name: 🛡️ Apply ZeroMount, Unicode Fix & Full LTO Patches
-        run: |
-          cd ${KERNEL_ROOT}
-          echo ">>> Applying Unicode Bypass Fix (Linux 5.15)..."
-          curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch" -o unicode.patch
-          patch -p1 --forward < unicode.patch || true
-          rm unicode.patch
+#      - name: 🛡️ Apply ZeroMount, Unicode Fix & Full LTO Patches
+#        run: |
+#          cd ${KERNEL_ROOT}
+#          echo ">>> Applying Unicode Bypass Fix (Linux 5.15)..."
+#          curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch" -o unicode.patch
+#          patch -p1 --forward < unicode.patch || true
+#          rm unicode.patch
 
-          echo ">>> Applying ZeroMount Path Redirection (Linux 5.15)..."
-          curl -LSs "https://raw.githubusercontent.com/jimsterino98/Super-Builders/main/android13-5.15/WildKSU/patches/60_zeromount-android13-5.15.patch" -o zeromount.patch
-          patch -p1 --forward < zeromount.patch || true
-          rm zeromount.patch
+#          echo ">>> Applying ZeroMount Path Redirection (Linux 5.15)..."
+#          curl -LSs "https://raw.githubusercontent.com/jimsterino98/Super-Builders/main/android13-5.15/WildKSU/patches/60_zeromount-android13-5.15.patch" -o zeromount.patch
+#          patch -p1 --forward < zeromount.patch || true
+#          rm zeromount.patch
 
-          echo ">>> Injecting ZeroMount task_mmu.c and stat.c hooks via custom fix patch..."
-          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/zeromount_fix_60.patch" -o zeromount_fix.patch
-          patch -p1 --forward < zeromount_fix.patch || true
-          rm zeromount_fix.patch
+#         echo ">>> Injecting ZeroMount task_mmu.c and stat.c hooks via custom fix patch..."
+#          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/zeromount_fix_60.patch" -o zeromount_fix.patch
+#          patch -p1 --forward < zeromount_fix.patch || true
+#          rm zeromount_fix.patch
 
-          echo ">>> Applying ZeroMount 65 (Linux 5.15)..."
-          curl -LSs "https://raw.githubusercontent.com/Enginex0/Super-Builders/refs/heads/main/android13-5.15/ReSukiSU/patches/_archive/65_zeromount-adb-filter-android13-5.15.patch" -o zeromount65.patch
-          patch -p1 --forward < zeromount65.patch || true
-          rm zeromount65.patch
+#          echo ">>> Applying ZeroMount 65 (Linux 5.15)..."
+#          curl -LSs "https://raw.githubusercontent.com/Enginex0/Super-Builders/refs/heads/main/android13-5.15/ReSukiSU/patches/_archive/65_zeromount-adb-filter-android13-5.15.patch" -o zeromount65.patch
+#          patch -p1 --forward < zeromount65.patch || true
+#          rm zeromount65.patch
 
-          echo ">>> Enabling CONFIG_ZEROMOUNT=y in su.config..."
-          if [ -f "arch/arm64/configs/su.config" ]; then
-            echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/su.config
-          fi
+#          echo ">>> Enabling CONFIG_ZEROMOUNT=y in su.config..."
+#          if [ -f "arch/arm64/configs/su.config" ]; then
+#            echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/su.config
+#          fi
 
-          echo ">>> Enabling Full Clang LTO in arch/Kconfig..."
-          if [ -f "arch/Kconfig" ]; then
-            sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
-          fi
+#          echo ">>> Enabling Full Clang LTO in arch/Kconfig..."
+#          if [ -f "arch/Kconfig" ]; then
+#            sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
+#          fi
 
-          echo "✅ ZeroMount, Unicode Fix applied successfully!"
+#          echo "✅ ZeroMount, Unicode Fix applied successfully!"
 
       # --- HARDCODED ALWAYS-ON: NTSYNC ---
       - name: 📥 Fetch & Apply NTSYNC Patches (Always Enabled)
