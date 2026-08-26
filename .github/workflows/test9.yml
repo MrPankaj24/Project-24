@@ -225,7 +225,7 @@ jobs:
           echo "CXX=ccache clang++" >> $GITHUB_ENV
 
       - name: ⚡ Setup 25GB Swap (For ThinLTO)
-        uses: thejerrybao/setup-swap-space@v1
+        uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 25
 
