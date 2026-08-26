@@ -64,8 +64,8 @@ on:
         description: 'SUSFS Commit SHA (Leave empty for latest)'
         required: false
         type: string
-#        default: 'fbb7462dd4cca04c7d99a56500fe55fe51c3d6a3'
-        default: 'b872a00c98ca230649dd385b406c048428da55eb'
+        default: 'fbb7462dd4cca04c7d99a56500fe55fe51c3d6a3'
+#        default: 'b872a00c98ca230649dd385b406c048428da55eb'
         
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
