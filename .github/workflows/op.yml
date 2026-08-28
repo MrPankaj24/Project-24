@@ -288,6 +288,7 @@ jobs:
           CONFIG_KSU_MANUAL_HOOK=y
           CONFIG_KSU=y
           CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
+          CONFIG_KPM=y
 
           # SuSFS Configuration
           CONFIG_KSU_SUSFS=y
