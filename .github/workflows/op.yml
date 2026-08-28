@@ -456,11 +456,11 @@ jobs:
           
           echo ">>> Rebuilding drivers/kernelsu symlink..."
           rm -f drivers/kernelsu
-          if [[ "$CHOICE" == "KSUN_OP" || "$CHOICE" == *"Official"* || "$CHOICE" == *"Next"* ]]; then
-            # Official KernelSU and KernelSU-Next keep files inside the 'kernel' subfolder
+          
+          # Dynamically check where the Kconfig source actually lives
+          if [ -d "KernelSU/kernel" ]; then
             ln -sf ../KernelSU/kernel drivers/kernelsu
           else
-            # ReSukiSU and wksu keep files in the root folder
             ln -sf ../KernelSU drivers/kernelsu
           fi
           
