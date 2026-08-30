@@ -392,11 +392,21 @@ jobs:
           
           if [[ "$CHOICE" == "ReSukiSU" ]]; then
             echo ">>> Injecting ReSukiSU (Branch: $BRANCH)..."
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/$BRANCH/kernel/setup.sh" | sed "s/main/$BRANCH/g" | bash -s "$BRANCH"
-            echo ">>> Applying 70_ksu_safety patch for ReSukiSU..."
-            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
-            cd KernelSU && patch -p1 --forward < ../ksu_safety.patch || true && cd ..
-            rm ksu_safety.patch
+            
+            # 1. Clone the repo explicitly to the KernelSU folder
+            git clone -b $BRANCH https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+            
+            # 2. Check the commit log safely 
+            (cd KernelSU && git log -1) || true
+            
+            # 3. Apply your patches safely (if you decide to uncomment this later)
+            # echo ">>> Applying 70_ksu_safety patch for ReSukiSU..."
+            # curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
+            # (cd KernelSU && patch -p1 --forward < ../ksu_safety.patch) || true
+            # rm ksu_safety.patch
+            
+            # 4. Run the setup script locally
+            bash KernelSU/kernel/setup.sh
             
           elif [[ "$CHOICE" == *"Official"* ]]; then
             echo ">>> Injecting Official KernelSU (Branch/Commit: $BRANCH)..."
@@ -461,26 +471,33 @@ jobs:
             # ReSukiSU and wksu keep files in the root folder
             ln -sf ../KernelSU drivers/kernelsu
           fi
+
+          # Dynamically check where the Kconfig source actually lives
+          if [ -d "KernelSU/kernel" ]; then
+            ln -sf ../KernelSU/kernel drivers/kernelsu
+          else
+            ln -sf ../KernelSU drivers/kernelsu
+          fi
           
           # --- APPLY LOCKED SUSFS TO KERNEL TREE ---
-          if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
-            echo ">>> Cloning Official SUSFS repository..."
-            git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
-            if [ -n "${{ github.event.inputs.SUSFS_SHA }}" ]; then
-              echo ">>> Locking SUSFS commit to SHA: ${{ github.event.inputs.SUSFS_SHA }}..."
-              cd susfs_repo && git checkout ${{ github.event.inputs.SUSFS_SHA }} && cd ..
-            fi
-            echo ">>> Copying SUSFS core fs and headers into kernel tree..."
-            cp -rf susfs_repo/kernel_patches/fs/* fs/
-            cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
-            echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
-            patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
-            echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
-            curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch" -o 51_fix.patch
-            patch -p1 --forward < 51_fix.patch || true
-            rm -rf susfs_repo 51_fix.patch
-            find . -name "*.orig" -delete -o -name "*.rej" -delete
-          fi
+          # if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
+          #  echo ">>> Cloning Official SUSFS repository..."
+          #  git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
+          #  if [ -n "${{ github.event.inputs.SUSFS_SHA }}" ]; then
+          #    echo ">>> Locking SUSFS commit to SHA: ${{ github.event.inputs.SUSFS_SHA }}..."
+          #    cd susfs_repo && git checkout ${{ github.event.inputs.SUSFS_SHA }} && cd ..
+          #  fi
+          #  echo ">>> Copying SUSFS core fs and headers into kernel tree..."
+          #  cp -rf susfs_repo/kernel_patches/fs/* fs/
+          #  cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
+          #  echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
+          #  patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
+          #  echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
+          # curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch" -o 51_fix.patch
+          #  patch -p1 --forward < 51_fix.patch || true
+          #  rm -rf susfs_repo 51_fix.patch
+          #  find . -name "*.orig" -delete -o -name "*.rej" -delete
+          # fi
 
       
       - name: 🛡️ Apply ZeroMount, Unicode Fix & Full LTO Patches
