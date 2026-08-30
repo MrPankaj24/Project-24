@@ -464,14 +464,7 @@ jobs:
           
           echo ">>> Rebuilding drivers/kernelsu symlink..."
           rm -f drivers/kernelsu
-          if [[ "$CHOICE" == "KSUN_OP" || "$CHOICE" == *"Official"* || "$CHOICE" == *"Next"* ]]; then
-            # Official KernelSU and KernelSU-Next keep files inside the 'kernel' subfolder
-            ln -sf ../KernelSU/kernel drivers/kernelsu
-          else
-            # ReSukiSU and wksu keep files in the root folder
-            ln -sf ../KernelSU drivers/kernelsu
-          fi
-
+          
           # Dynamically check where the Kconfig source actually lives
           if [ -d "KernelSU/kernel" ]; then
             ln -sf ../KernelSU/kernel drivers/kernelsu
@@ -493,11 +486,12 @@ jobs:
           #  echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
           #  patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
           #  echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
-          # curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch" -o 51_fix.patch
+          #  curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch" -o 51_fix.patch
           #  patch -p1 --forward < 51_fix.patch || true
           #  rm -rf susfs_repo 51_fix.patch
           #  find . -name "*.orig" -delete -o -name "*.rej" -delete
           # fi
+
 
       
       - name: 🛡️ Apply ZeroMount, Unicode Fix & Full LTO Patches
