@@ -483,8 +483,11 @@ jobs:
               cd susfs_repo && git checkout ${{ github.event.inputs.SUSFS_SHA }} && cd ..
             fi
             echo ">>> Copying SUSFS core fs and headers into kernel tree..."
-            cp -rf susfs_repo/kernel_patches/fs/* fs/
-            cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
+            # cp -rf susfs_repo/kernel_patches/fs/* fs/
+            # cp -rf susfs_repo/kernel_patches/include/linux/* include/linux/
+            cp susfs_repo/kernel_patches/fs/susfs.c fs/
+            cp susfs_repo/kernel_patches/include/linux/susfs_def.h include/linux/
+            cp susfs_repo/kernel_patches/include/linux/susfs.h include/linux/
             echo ">>> Applying base patch 50_add_susfs_in_gki-android13-5.15.patch..."
             patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
             echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
