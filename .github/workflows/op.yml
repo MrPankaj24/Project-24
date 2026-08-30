@@ -492,7 +492,8 @@ jobs:
             patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
             echo ">>> Applying custom reject resolution patch 51_fix_susfs_rejects.patch..."
             curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch" -o 51_fix.patch
-            git apply --3way < 51_fix.patch || true
+            git apply -p1 --3way 51_fix.patch || \
+            git apply -p1 --ignore-whitespace 51_fix.patch || true
             rm -rf susfs_repo 51_fix.patch
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
