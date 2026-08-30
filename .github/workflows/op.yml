@@ -521,7 +521,7 @@ jobs:
           # echo ">>> Enabling CONFIG_ZEROMOUNT=y in su.config..."
           # if [ -f "arch/arm64/configs/su.config" ]; then
           #  echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/su.config
-          fi
+          # fi
 
           echo ">>> Enabling Full Clang LTO in arch/Kconfig..."
           if [ -f "arch/Kconfig" ]; then
