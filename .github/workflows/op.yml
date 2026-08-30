@@ -402,10 +402,10 @@ jobs:
             (cd KernelSU && git log -1) || true
             
             # 3. Apply your patches safely (if you decide to uncomment this later)
-            # echo ">>> Applying 70_ksu_safety patch for ReSukiSU..."
-            # curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
-            # (cd KernelSU && patch -p1 --forward < ../ksu_safety.patch) || true
-            # rm ksu_safety.patch
+             echo ">>> Applying 70_ksu_safety patch for ReSukiSU..."
+             curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/70_ksu_safety-resukisu-5.15.patch" -o ksu_safety.patch
+             (cd KernelSU && patch -p1 --forward < ../ksu_safety.patch) || true
+             rm ksu_safety.patch
             
             # 4. Run the setup script locally
             bash KernelSU/kernel/setup.sh
