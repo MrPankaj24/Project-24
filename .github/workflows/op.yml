@@ -498,10 +498,10 @@ jobs:
       - name: 🛡️ Apply ZeroMount, Unicode Fix & Full LTO Patches
         run: |
           cd ${KERNEL_ROOT}
-          echo ">>> Applying Unicode Bypass Fix (Linux 5.15)..."
-          curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch" -o unicode.patch
-          patch -p1 --forward < unicode.patch || true
-          rm unicode.patch
+          # echo ">>> Applying Unicode Bypass Fix (Linux 5.15)..."
+          # curl -LSs "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/unicode_bypass_fix_6.1-.patch" -o unicode.patch
+          # patch -p1 --forward < unicode.patch || true
+          # rm unicode.patch
 
           # echo ">>> Applying ZeroMount Path Redirection (Linux 5.15)..."
           # curl -LSs "https://raw.githubusercontent.com/jimsterino98/Super-Builders/main/android13-5.15/WildKSU/patches/60_zeromount-android13-5.15.patch" -o zeromount.patch
