@@ -228,7 +228,7 @@ jobs:
           echo "CC=ccache clang" >> $GITHUB_ENV
           echo "CXX=ccache clang++" >> $GITHUB_ENV
 
-      - name: ⚡ Setup 25GB Swap (For ThinLTO)
+      - name: ⚡ Setup 25GB Swap (For FullLTO)
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 25
@@ -553,7 +553,7 @@ jobs:
             sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
           fi
 
-            printf "\nconfig ARCH_SUPPORTS_LTO_CLANG_FULL\n\tdef_bool y\n\tdepends on ARCH_SUPPORTS_LTO_CLANG\n" >> arch/Kconfig
+            sed -i '$ a config ARCH_SUPPORTS_LTO_CLANG_FULL\n\tdef_bool y\n\tdepends on ARCH_SUPPORTS_LTO_CLANG' arch/Kconfig || true
           fi
 
           echo "✅ ZeroMount, Unicode Fix applied successfully!"
