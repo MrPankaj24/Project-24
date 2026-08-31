@@ -351,7 +351,8 @@ jobs:
           CONFIG_LOCALVERSION="@MrPankaj24"
 
           CONFIG_LTO_CLANG_FULL=y
-          CONFIG_LTO_CLANG_THIN=n
+          CONFIG_ARCH_SUPPORTS_LTO_CLANG_FULL=y
+          # CONFIG_LTO_CLANG_THIN is not set
           EOF
           echo "✅ Generated arch/arm64/configs/su.config successfully!"
 
@@ -550,6 +551,9 @@ jobs:
           echo ">>> Enabling Full Clang LTO in arch/Kconfig..."
           if [ -f "arch/Kconfig" ]; then
             sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
+          fi
+
+            printf "\nconfig ARCH_SUPPORTS_LTO_CLANG_FULL\n\tdef_bool y\n\tdepends on ARCH_SUPPORTS_LTO_CLANG\n" >> arch/Kconfig
           fi
 
           echo "✅ ZeroMount, Unicode Fix applied successfully!"
