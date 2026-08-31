@@ -69,7 +69,7 @@ on:
         type: string
 #       default: 'fbb7462dd4cca04c7d99a56500fe55fe51c3d6a3'
 #        default: 'b872a00c98ca230649dd385b406c048428da55eb'
-        default: '23d85d2278f3e481644f809053868b6153715583'
+        default: 'bca0d2333c1a7d717e7278b019d7af7ba1d16005'
         
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
