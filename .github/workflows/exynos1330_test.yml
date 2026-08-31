@@ -347,6 +347,9 @@ jobs:
           CONFIG_NTSYNC=y
           CONFIG_LOCALVERSION_AUTO=n
           CONFIG_LOCALVERSION="@MrPankaj24"
+
+          CONFIG_LTO_CLANG_FULL=y
+          CONFIG_LTO_CLANG_THIN=n
           EOF
           echo "✅ Generated arch/arm64/configs/su.config successfully!"
 
