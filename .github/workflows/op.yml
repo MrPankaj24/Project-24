@@ -551,10 +551,9 @@ jobs:
           echo ">>> Enabling Full Clang LTO in arch/Kconfig..."
           if [ -f "arch/Kconfig" ]; then
             sed -i '/^default LTO_NONE$/s/default LTO_NONE/default LTO_CLANG_FULL/' arch/Kconfig || true
-          fi
-
             sed -i '$ a config ARCH_SUPPORTS_LTO_CLANG_FULL\n\tdef_bool y\n\tdepends on ARCH_SUPPORTS_LTO_CLANG' arch/Kconfig || true
           fi
+
 
           echo "✅ ZeroMount, Unicode Fix applied successfully!"
 
