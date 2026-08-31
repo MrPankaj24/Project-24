@@ -32,9 +32,11 @@ on:
         options:
           - llvm22-ccache
           - llvm22-nocache
+          - google-clang-17-ccache
+          - google-clang-17-nocache
           - google-clang-ccache
           - google-clang-nocache
-        default: llvm22-ccache
+        default: google-clang-17-ccache
 
       # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
       ENABLE_KSU:
@@ -65,8 +67,6 @@ on:
         description: 'SUSFS Commit SHA (Leave empty for latest)'
         required: false
         type: string
-#       default: 'fbb7462dd4cca04c7d99a56500fe55fe51c3d6a3'
-#        default: 'b872a00c98ca230649dd385b406c048428da55eb'
         default: '23d85d2278f3e481644f809053868b6153715583'
         
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
@@ -255,6 +255,21 @@ jobs:
             else
               echo "COMPILER_CC=clang-22" >> $GITHUB_ENV
             fi
+            
+          elif [[ "${{ github.event.inputs.toolchain_mode }}" == *"google-clang-17"* ]]; then
+            echo ">>> Fetching Google Clang (r596125 - Android 17 Release)..."
+            CLANG_VER="clang-r596125"
+            DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android17-release/${CLANG_VER}.tar.gz"
+            mkdir -p ${CLANG_VER}
+            curl -L "$DL_URL" -o clang.tar.gz
+            tar -xzf clang.tar.gz -C ${CLANG_VER}
+            echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang" >> $GITHUB_ENV
+            fi
+            
           else
             echo ">>> Fetching Google Clang (r487747c - Android 14 Stable)..."
             CLANG_VER="clang-r487747c"
@@ -747,7 +762,7 @@ jobs:
           rm -rf /tmp/wk_patches
           find . -name "*.orig" -delete -o -name "*.rej" -delete
           echo "✅ Exynos 5.15 optimization suite applied successfully!"
-      
+       
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
           cd ${KERNEL_ROOT}
