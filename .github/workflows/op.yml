@@ -480,7 +480,8 @@ jobs:
             sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
             cd ..
 
-
+            echo ">>> NUKING .git DIRECTORY TO FORCE FALLBACK VERSION..."
+            rm -rf .git
             
             if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
               echo ">>> Applying static.patch for KSUN_OP..."
