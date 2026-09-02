@@ -462,19 +462,24 @@ jobs:
               curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
             fi
             
-            echo ">>> Extracting KSU Version Info..."
+            echo ">>> Extracting KSU Version Info from stable branch..."
             cd KernelSU-Next
-            # Fetching and tracking the stable branch
-            git fetch origin stable 2>/dev/null || true
-            KSU_GIT_VERSION=$(git rev-list --count refs/remotes/origin/stable 2>/dev/null || echo 0)
-            KSU_GIT_TAG=$(git describe --tags --abbrev=0 refs/remotes/origin/stable 2>/dev/null || echo "v0.0.1")
+            
+            # Fetch the stable branch and all tags directly from the official repository
+            git fetch https://github.com/KernelSU-Next/KernelSU-Next.git stable --tags 2>/dev/null || true
+            
+            # Extract tags and commit count from FETCH_HEAD (the stable branch we just fetched)
+            KSU_GIT_VERSION=$(git rev-list --count FETCH_HEAD 2>/dev/null || echo 0)
+            KSU_GIT_TAG=$(git describe --tags --abbrev=0 FETCH_HEAD 2>/dev/null || echo "v0.0.1")
             KSU_VERSION=$((30000 + KSU_GIT_VERSION))
             
-            echo ">>> Injecting Version into Kbuild..."
+            echo ">>> Injecting Version (Tag: $KSU_GIT_TAG | Version: $KSU_VERSION) into Kbuild..."
             cd kernel
-            sed -i "s/^KSU_VERSION_FALLBACK := 1$/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
-            sed -i "s/^KSU_VERSION_TAG_FALLBACK := v0.0.1$/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
+            # Using .* ensures replacement works even if the default fallback values change in upstream updates
+            sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
+            sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
             cd ..
+
 
             
             if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
