@@ -128,7 +128,7 @@ on:
         description: 'Custom Configs (space-separated, e.g. CONFIG_NOMOUNT=y CONFIG_OVERLAY_FS=y)'
         required: false
         type: string
-        default: ''  
+        default: 'CONFIG_NOMOUNT'  
 
       # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
@@ -367,6 +367,8 @@ jobs:
           CONFIG_LTO_CLANG_FULL=y
           CONFIG_ARCH_SUPPORTS_LTO_CLANG_FULL=y
           # CONFIG_LTO_CLANG_THIN is not set
+
+          CONFIG_NOMOUNT
           EOF
           echo "✅ Generated arch/arm64/configs/su.config successfully!"
 
