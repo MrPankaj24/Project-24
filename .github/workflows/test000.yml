@@ -124,6 +124,12 @@ on:
         type: string
         default: 'https://github.com/MrPankaj24/kernel_patch/blob/main/for_devhunter1/custom.config'
 
+      EXTRA_KCONFIGS:
+        description: 'Custom Configs (space-separated, e.g. CONFIG_NOMOUNT=y CONFIG_OVERLAY_FS=y)'
+        required: false
+        type: string
+        default: ''  
+
       # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
         description: 'Create a GitHub Release?'
@@ -403,6 +409,19 @@ jobs:
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ]; then
             download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
           fi
+
+      - name: 📝 Inject Custom Extra Configs
+        if: github.event.inputs.EXTRA_KCONFIGS != ''
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Injecting user-defined Extra Configs..."
+          
+          # We use tr ' ' '\n' so you can type them in the box separated by spaces, 
+          # and it will put them on separate lines in the config file.
+          echo "${{ github.event.inputs.EXTRA_KCONFIGS }}" | tr ' ' '\n' >> arch/arm64/configs/su.config
+          
+          echo "✅ Successfully injected:"
+          echo "${{ github.event.inputs.EXTRA_KCONFIGS }}" | tr ' ' '\n'
 
       - name: 📥 Fetch & Apply DroidSpaces Patch
         if: github.event.inputs.ENABLE_DROIDSPACE == 'true'
