@@ -96,6 +96,10 @@ on:
         description: 'Apply Disable CECs+ Patch?'
         type: boolean
         default: true
+      ENABLE_BYPASS_CHARGING:
+        description: 'Apply Bypass Charging Fix Patch?'
+        type: boolean
+        default: true
 
       # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
@@ -720,6 +724,26 @@ jobs:
           fi
 
           rm -f "${PATCH_FILE}"
+
+      # 👉 NEW STEP FOR BYPASS CHARGING FIX
+      - name: 🔋 Apply Bypass Charging Fix Patch
+        if: github.event.inputs.ENABLE_BYPASS_CHARGING == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${KERNEL_ROOT}"
+          
+          PATCH_URL="https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/Bypass_charging_fix.patch"
+          PATCH_FILE="Bypass_charging_fix.patch"
+          
+          echo ">>> Downloading Bypass Charging Fix patch..."
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "${PATCH_URL}" -o "${PATCH_FILE}"
+          
+          echo ">>> Applying Bypass Charging Fix patch..."
+          patch -p1 --forward < "${PATCH_FILE}" || echo "⚠️ Warning: Bypass Charging patch had minor rejects or was already applied."
+          
+          rm -f "${PATCH_FILE}"
+          echo "✅ Bypass Charging Fix patch applied successfully!"
 
       # --- HARDCODED ALWAYS-ON: BBRV3 ---
       - name: 🌐 Apply BBRv3 TCP Congestion Control Patch (Always Enabled)
