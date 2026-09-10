@@ -463,7 +463,7 @@ jobs:
             # rm ksu_safety.patch
             
             # 4. Run the setup script locally
-            bash KernelSU/kernel/setup.sh
+            bash KernelSU/kernel/setup.sh $BRANCH
             
           elif [[ "$CHOICE" == *"Official"* ]]; then
             echo ">>> Injecting Official KernelSU (Branch/Commit: $BRANCH)..."
