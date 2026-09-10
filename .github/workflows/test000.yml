@@ -77,7 +77,7 @@ on:
           - 'Zeromount'
           - 'NoMount'
           - 'None'
-        default: 'Zeromount'
+        default: 'NoMount'
 
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
@@ -132,7 +132,7 @@ on:
         description: 'Custom Configs (space-separated, e.g. CONFIG_NOMOUNT=y CONFIG_OVERLAY_FS=y)'
         required: false
         type: string
-        default: 'CONFIG_NOMOUNT'  
+        default: 'CONFIG_NOMOUNT=y'  
 
       # --- 6. RELEASE OPTIONS ---
       MAKE_RELEASE:
