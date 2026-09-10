@@ -499,22 +499,25 @@ jobs:
             cd KernelSU-Next
             
             # Fetch the stable branch and all tags directly from the official repository
-            git fetch https://github.com/KernelSU-Next/KernelSU-Next.git stable --tags 2>/dev/null || true
+            # git fetch https://github.com/KernelSU-Next/KernelSU-Next.git stable --tags 2>/dev/null || true
             
-            # Extract tags and commit count from FETCH_HEAD (the stable branch we just fetched)
-            KSU_GIT_VERSION=$(git rev-list --count FETCH_HEAD 2>/dev/null || echo 0)
-            KSU_GIT_TAG=$(git describe --tags --abbrev=0 FETCH_HEAD 2>/dev/null || echo "v0.0.1")
+            # Fetch dev branch for version info (tags, commits, etc.)
+            git fetch origin dev 2>/dev/null || true
+        
+            # Extract and export KSU version info from dev branch
+            KSU_GIT_VERSION=$(git rev-list --count refs/remotes/origin/dev 2>/dev/null)
+            KSU_GIT_TAG=$(git describe --tags --abbrev=0 refs/remotes/origin/dev 2>/dev/null || echo "")
+            KSU_COMMIT=$(git rev-parse --short refs/remotes/origin/dev 2>/dev/null)
             KSU_VERSION=$((30000 + KSU_GIT_VERSION))
-            
-            echo ">>> Injecting Version (Tag: $KSU_GIT_TAG | Version: $KSU_VERSION) into Kbuild..."
-            cd kernel
-            # Using .* ensures replacement works even if the default fallback values change in upstream updates
-            sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
-            sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
-            cd ..
 
-            echo ">>> NUKING .git DIRECTORY TO FORCE FALLBACK VERSION..."
-            rm -rf .git
+            cd kernel
+            sed -i "s/^KSU_VERSION_FALLBACK := 1$/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild
+            sed -i "s/^KSU_VERSION_TAG_FALLBACK := v0.0.1$/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild
+        
+            echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> $GITHUB_ENV
+            echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
+            echo "KSU_COMMIT=$KSU_COMMIT" >> $GITHUB_ENV
+
             
             if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
               echo ">>> Applying static.patch for KSUN_OP..."
