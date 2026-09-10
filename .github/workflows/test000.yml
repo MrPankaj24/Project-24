@@ -517,7 +517,7 @@ jobs:
             echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> $GITHUB_ENV
             echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
             echo "KSU_COMMIT=$KSU_COMMIT" >> $GITHUB_ENV
-
+            ce ..
             
             if [ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ]; then
               echo ">>> Applying static.patch for KSUN_OP..."
