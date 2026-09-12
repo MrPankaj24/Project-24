@@ -107,7 +107,7 @@ on:
       ENABLE_BYPASS_CHARGING:
         description: 'Apply Bypass Charging Fix Patch?'
         type: boolean
-        default: true
+        default: false
 
       # --- 5. CONFIGURATION TOGGLES ---
       ENABLE_SU_CONFIG:
