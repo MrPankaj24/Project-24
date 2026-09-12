@@ -12,12 +12,12 @@ on:
         description: 'Kernel Source URL'
         required: true
         type: string
-        default: 'https://github.com/devhunter1/android_kernel_samsung_s5e8535.git'
+        default: 'https://github.com/MrPankaj24/SM-A14.git'
       KERNEL_BRANCH:
         description: 'Kernel Branch'
         required: true
         type: string
-        default: 'lineage-23.2'
+        default: 'SM-A146B'
       DEVICE_DEFCONFIG:
         description: 'Target Device Defconfig'
         required: true
@@ -73,7 +73,7 @@ on:
         description: 'URL for 51_susfs_fix.patch'
         required: true
         type: string
-        default: 'https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/51_susfs_fix.patch'  
+        default: 'https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/A14/51_susfs_fix_stock.patch'  
         
       # 👉 NEW TOGGLE FOR MOUNT HIDING
       MOUNT_HIDE_MODE:
