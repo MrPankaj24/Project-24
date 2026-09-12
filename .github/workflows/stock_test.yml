@@ -34,6 +34,8 @@ on:
           - llvm22-nocache
           - google-clang-17-ccache
           - google-clang-17-nocache
+          - google-clang-13-ccache
+          - google-clang-13-nocache
           - google-clang-ccache
           - google-clang-nocache
         default: llvm22-ccache
@@ -296,6 +298,20 @@ jobs:
               echo "COMPILER_CC=clang" >> $GITHUB_ENV
             fi
             
+          elif [[ "${{ github.event.inputs.toolchain_mode }}" == *"google-clang-13"* ]]; then
+            echo ">>> Fetching Google Clang (r450784d - Android 13 Release)..."
+            CLANG_VER="clang-r450784d"
+            DL_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/${CLANG_VER}.tar.gz"
+            mkdir -p ${CLANG_VER}
+            curl -L "$DL_URL" -o clang.tar.gz
+            tar -xzf clang.tar.gz -C ${CLANG_VER}
+            echo "COMPILER_PATH=${GITHUB_WORKSPACE}/toolchains/${CLANG_VER}/bin" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang" >> $GITHUB_ENV
+            fi
+
           else
             echo ">>> Fetching Google Clang (r487747c - Android 14 Stable)..."
             CLANG_VER="clang-r487747c"
@@ -698,7 +714,7 @@ jobs:
           # echo ">>> Patching OVT touchscreen driver for newer Clang compatibility..."
           # find drivers/input/touchscreen/ovt/ -type f -name "*.c" -exec sed -i 's/sizeof(tcm_hcd->print_buf)/SEC_CMD_STR_LEN/g' {} +
           echo ">>> Patching EMS sysbusy for newer Clang compatibility (missing type specifier)..."
-          sed -i 's/static cpn_next_cpu\[/static int cpn_next_cpu[/g' kernel/sched/ems/sysbusy.c          
+          sed -i 's/static cpn_next_cpu\[/static int cpn_next_cpu[/g' kernel/sched/ems/sysbusy.c         
    
 
       - name: 🛑 Apply CRCs Disable Patch
@@ -861,7 +877,7 @@ jobs:
           rm -rf /tmp/wk_patches
           find . -name "*.orig" -delete -o -name "*.rej" -delete
           echo "✅ Exynos 5.15 optimization suite applied successfully!"
-       
+        
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
           cd ${KERNEL_ROOT}
