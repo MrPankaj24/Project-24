@@ -22,7 +22,7 @@ on:
         description: 'Target Device Defconfig'
         required: true
         type: string
-        default: 'm14x_defconfig'
+        default: 's5e8535-a14xxx_defconfig'
 
       # --- 2. TOOLCHAIN & ACCELERATION (Combined to stay under 25 limit) ---
       toolchain_mode:
