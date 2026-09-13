@@ -910,6 +910,20 @@ jobs:
             echo "⚠️ No modules found to pack!"
           fi
 
+          # 3. Extract & Package DTB/DTBO Files
+          echo ">>> Extracting DTB/DTBO files for inspection..."
+          mkdir -p ${GITHUB_WORKSPACE}/artifacts/dtb_files
+          find ${OUTDIR}/arch/arm64/boot/dts/ -type f \( -name "*.dtb" -o -name "*.dtbo" \) -exec cp {} ${GITHUB_WORKSPACE}/artifacts/dtb_files/ \;
+          
+          if [ "$(ls -A ${GITHUB_WORKSPACE}/artifacts/dtb_files 2>/dev/null)" ]; then
+            cd ${GITHUB_WORKSPACE}/artifacts
+            zip -r9 "Project24-DTBs-${SHORT_DEVICE}.zip" dtb_files/*
+            echo "✅ DTB/DTBO files packed: Project24-DTBs-${SHORT_DEVICE}.zip"
+          else
+            echo "⚠️ No DTB/DTBO files found in ${OUTDIR}/arch/arm64/boot/dts/ !"
+          fi
+          rm -rf ${GITHUB_WORKSPACE}/artifacts/dtb_files
+
       - name: ⬆️ Upload Action Artifacts
         uses: actions/upload-artifact@v4
         with:
