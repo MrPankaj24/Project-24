@@ -67,7 +67,7 @@ on:
         description: 'SUSFS Commit SHA (Leave empty for latest)'
         required: false
         type: string
-        default: '7af04b08f86a5f811cbea28805f96d52368e005f'
+        default: '687d2d18d94cb2e3e72d1074778d58384d58e379'
 
       # TOGGLE FOR MOUNT HIDING
       MOUNT_HIDE_MODE:
