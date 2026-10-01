@@ -361,6 +361,7 @@ jobs:
           CONFIG_LTO_CLANG_FULL=y
           CONFIG_ARCH_SUPPORTS_LTO_CLANG_FULL=y
           # CONFIG_LTO_CLANG_THIN is not set
+          # CONFIG_DISABLE_LOCKSCREEN_USB_RESTRICTION is not set
           EOF
           echo "✅ Generated arch/arm64/configs/su.config successfully!"
 
