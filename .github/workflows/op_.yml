@@ -48,6 +48,7 @@ on:
         type: choice
         options:
           - 'BakaSU'
+          - 'MidoriSU'
           - 'KernelSU (Official)'
           - 'KernelSU-Next'
           - 'KSUN_OP'
@@ -55,7 +56,7 @@ on:
           - 'None'
         default: 'BakaSU'
       MANAGER_BRANCH:
-        description: 'KernelSU Manager Branch (main, dev, canary)'
+        description: 'KernelSU Manager Branch (main, resuki, dev, canary)'
         required: true
         type: string
         default: 'main'
@@ -78,8 +79,8 @@ on:
           - 'Zeromount'
           - 'NoMount'
           - 'None'
-        default: 'NoMount'  
-        
+        default: 'NoMount'
+
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
         description: 'Apply Exynos 5.15 Optimization Patch Suite?'
@@ -435,14 +436,15 @@ jobs:
           
           if [[ "$CHOICE" == "BakaSU" ]]; then
             echo ">>> Injecting BakaSU (Branch: $BRANCH)..."
-            # EXACT REPO URL PROVIDED HERE:
             git clone -b $BRANCH https://github.com/Baka-SU/BakaSU.git KernelSU
-            
-            # Safe commit check
             (cd KernelSU && git log -1) || true
-            
-            # Run the setup script locally
             bash KernelSU/kernel/setup.sh
+
+          elif [[ "$CHOICE" == "MidoriSU" ]]; then
+            echo ">>> Injecting MidoriSU (Branch: $BRANCH)..."
+            git clone -b "$BRANCH" https://github.com/midori01/KernelSU.git KernelSU
+            (cd KernelSU && git log -1) || true
+            curl -LSs "https://raw.githubusercontent.com/midori01/KernelSU/$BRANCH/kernel/setup.sh" | bash -s "$BRANCH"
             
           elif [[ "$CHOICE" == *"Official"* ]]; then
             echo ">>> Injecting Official KernelSU (Branch/Commit: $BRANCH)..."
@@ -477,17 +479,14 @@ jobs:
             echo ">>> Extracting KSU Version Info from stable branch..."
             cd KernelSU-Next
             
-            # Fetch the stable branch and all tags directly from the official repository
             git fetch https://github.com/KernelSU-Next/KernelSU-Next.git stable --tags 2>/dev/null || true
             
-            # Extract tags and commit count from FETCH_HEAD (the stable branch we just fetched)
             KSU_GIT_VERSION=$(git rev-list --count FETCH_HEAD 2>/dev/null || echo 0)
             KSU_GIT_TAG=$(git describe --tags --abbrev=0 FETCH_HEAD 2>/dev/null || echo "v0.0.1")
             KSU_VERSION=$((30000 + KSU_GIT_VERSION))
             
             echo ">>> Injecting Version (Tag: $KSU_GIT_TAG | Version: $KSU_VERSION) into Kbuild..."
             cd kernel
-            # Using .* ensures replacement works even if the default fallback values change in upstream updates
             sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
             sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
             cd ..
@@ -502,14 +501,12 @@ jobs:
             fi
             
             cd ..
-            # Rename to match standard KernelSU path for the workflow
             mv KernelSU-Next KernelSU
           fi
           
           echo ">>> Rebuilding drivers/kernelsu symlink..."
           rm -f drivers/kernelsu
           
-          # Dynamically check where the Kconfig source actually lives
           if [ -d "KernelSU/kernel" ]; then
             ln -sf ../KernelSU/kernel drivers/kernelsu
           else
@@ -591,9 +588,9 @@ jobs:
 
             echo ">>> Enabling CONFIG_ZEROMOUNT=y in su.config..."
             if [ -f "arch/arm64/configs/su.config" ]; then
-             echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/su.config
+              echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/su.config
             else
-             echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}
+              echo "CONFIG_ZEROMOUNT=y" >> arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}
             fi
             echo "✅ ZeroMount applied successfully!"
             
@@ -603,9 +600,9 @@ jobs:
             
             echo ">>> Enabling CONFIG_NOMOUNT=y in su.config..."
             if [ -f "arch/arm64/configs/su.config" ]; then
-             echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/su.config
+              echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/su.config
             else
-             echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}
+              echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/${{ github.event.inputs.DEVICE_DEFCONFIG }}
             fi
             echo "✅ NoMount applied successfully!"
             
@@ -834,7 +831,7 @@ jobs:
           rm -rf /tmp/wk_patches
           find . -name "*.orig" -delete -o -name "*.rej" -delete
           echo "✅ Exynos 5.15 optimization suite applied successfully!"
-       
+        
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
           cd ${KERNEL_ROOT}
@@ -880,7 +877,7 @@ jobs:
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ] && [ -f "arch/arm64/configs/custom.config" ]; then CONFIG_ARGS="$CONFIG_ARGS custom.config"; fi
           
           echo "===================================================="
-          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via ${{ github.event.inputs.toolchain_mode }}"
+          echo "Configuring and Building for ${{ github.event.inputs.DEVICE_DEFCONFIG }} via${{ github.event.inputs.toolchain_mode }}"
           echo "===================================================="
           
           make O="${OUTDIR}" CC="${CC}" $CONFIG_ARGS
@@ -941,7 +938,7 @@ jobs:
           mkdir -p ${GITHUB_WORKSPACE}/artifacts/dtb_files
           find ${OUTDIR}/arch/arm64/boot/dts/ -type f \( -name "*.dtb" -o -name "*.dtbo" \) -exec cp {} ${GITHUB_WORKSPACE}/artifacts/dtb_files/ \;
           
-          if [ "$(ls -A ${GITHUB_WORKSPACE}/artifacts/dtb_files 2>/dev/null)" ]; then
+          if [ "$(ls -A${GITHUB_WORKSPACE}/artifacts/dtb_files 2>/dev/null)" ]; then
             cd ${GITHUB_WORKSPACE}/artifacts
             zip -r9 "Project24-DTBs-${SHORT_DEVICE}.zip" dtb_files/*
             echo "✅ DTB/DTBO files packed: Project24-DTBs-${SHORT_DEVICE}.zip"
@@ -968,7 +965,7 @@ jobs:
         if: github.event.inputs.MAKE_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: Project 24 Kernel (${{ github.event.inputs.DEVICE_DEFCONFIG }}) - Run ${{ github.run_number }}
+          name: Project 24 Kernel (${{ github.event.inputs.DEVICE_DEFCONFIG }}) - Run${{ github.run_number }}
           tag_name: ${{ env.SAFE_TAG }}
           body: |
             ### ⚡ Project 24 Custom Kernel (Blueprint Edition)
