@@ -451,7 +451,7 @@ jobs:
             git clone -b $BRANCH https://github.com/tiann/KernelSU.git KernelSU || git clone https://github.com/tiann/KernelSU.git KernelSU
             cd KernelSU && git checkout $BRANCH || true && cd ..
             git clone -b gki-android13-5.15 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
-            cd susfs4ksu && git checkout 7af04b08f86a5f811cbea28805f96d52368e005f && cd ..
+            cd susfs4ksu && git checkout 2ad297356931ba06b4edc0860f42fdd143b02ffd && cd ..
             cd KernelSU && patch -p1 --forward < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true && cd ..
             bash KernelSU/kernel/setup.sh
             rm -rf susfs4ksu
