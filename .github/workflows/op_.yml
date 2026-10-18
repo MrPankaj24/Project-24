@@ -438,7 +438,7 @@ jobs:
             echo ">>> Injecting BakaSU (Branch: $BRANCH)..."
             git clone -b $BRANCH https://github.com/Baka-SU/BakaSU.git KernelSU
             (cd KernelSU && git log -1) || true
-            bash KernelSU/kernel/setup.sh
+            bash KernelSU/kernel/setup.sh $BRANCH
 
           elif [[ "$CHOICE" == "MidoriSU" ]]; then
             echo ">>> Injecting MidoriSU (Branch: $BRANCH)..."
