@@ -534,15 +534,15 @@ jobs:
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
-#      - name: 🩹 Apply BakaSU SuSFS Compat Fix Patch
-#        if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT == 'BakaSU'
-#        run: |
-#          cd ${KERNEL_ROOT}
-#          echo ">>> Fetching and applying fix_susfs_compat_BakaSU.patch..."
-#          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/fix_susfs_compat_BakaSU.patch" -o fix_susfs_compat_BakaSU.patch
-#          patch -p1 --forward < fix_susfs_compat_BakaSU.patch || true
-#          rm -f fix_susfs_compat_BakaSU.patch
-#          find . -name "*.orig" -delete -o -name "*.rej" -delete    
+      - name: 🩹 Apply BakaSU SuSFS Compat Fix Patch
+        if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT == 'BakaSU'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Fetching and applying fix_susfs_compat_BakaSU.patch..."
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/fix_susfs_compat_BakaSU.patch" -o fix_susfs_compat_BakaSU.patch
+          patch -p1 --forward < fix_susfs_compat_BakaSU.patch || true
+          rm -f fix_susfs_compat_BakaSU.patch
+          find . -name "*.orig" -delete -o -name "*.rej" -delete    
 
       - name: 🔍 Extract Root Manager Version
         id: extract_version
