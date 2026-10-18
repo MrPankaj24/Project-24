@@ -544,20 +544,65 @@ jobs:
 #          rm -f fix_susfs_compat_BakaSU.patch
 #          find . -name "*.orig" -delete -o -name "*.rej" -delete    
 
-      - name: 🔍 Extract Root Manager Version
+      - name: 🔍 Extract Root Manager Version & Inject Fallback
         id: extract_version
         run: |
           cd ${KERNEL_ROOT}
           if [ -d "KernelSU" ] && [ -d "KernelSU/.git" ]; then
             cd KernelSU
-            KSU_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "Unknown")
-            KSU_COMM=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-            echo "KSU_VERSION_INFO=${KSU_TAG} (r${KSU_COMM})" >> $GITHUB_ENV
-            echo "Extracted Version: ${KSU_TAG} (r${KSU_COMM})"
+            
+            # Determine target ref for version counting (FETCH_HEAD if available, otherwise HEAD)
+            TARGET_REF="HEAD"
+            if git rev-parse --verify FETCH_HEAD >/dev/null 2>&1; then
+              TARGET_REF="FETCH_HEAD"
+            fi
+            
+            KSU_GIT_VERSION=$(git rev-list --count "$TARGET_REF" 2>/dev/null || git rev-list --count HEAD 2>/dev/null || echo 0)
+            KSU_GIT_TAG=$(git describe --tags --abbrev=0 "$TARGET_REF" 2>/dev/null || git describe --tags --abbrev=0 HEAD 2>/dev/null || echo "v0.0.1")
+            KSU_VERSION=$((30000 + KSU_GIT_VERSION))
+            
+            echo ">>> Injecting Version (Tag: $KSU_GIT_TAG | Version: $KSU_VERSION | Count: $KSU_GIT_VERSION) into Kbuild..."
+            
+            # Locate Kbuild file dynamically (kernel/Kbuild or root Kbuild)
+            KBUILD_PATH=""
+            if [ -f "kernel/Kbuild" ]; then
+              KBUILD_PATH="kernel/Kbuild"
+            elif [ -f "Kbuild" ]; then
+              KBUILD_PATH="Kbuild"
+            fi
+            
+            if [ -n "$KBUILD_PATH" ]; then
+              # Inject or update fallback values cleanly
+              if grep -q "KSU_VERSION_FALLBACK" "$KBUILD_PATH"; then
+                sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" "$KBUILD_PATH"
+              else
+                echo "KSU_VERSION_FALLBACK := ${KSU_VERSION}" >> "$KBUILD_PATH"
+              fi
+              
+              if grep -q "KSU_VERSION_TAG_FALLBACK" "$KBUILD_PATH"; then
+                sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" "$KBUILD_PATH"
+              else
+                echo "KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}" >> "$KBUILD_PATH"
+              fi
+              echo "✅ Successfully injected version into $KBUILD_PATH"
+            else
+              echo "⚠️ Warning: Kbuild file not found in KernelSU structure."
+            fi
+
+            echo "KSU_VERSION_INFO=${KSU_GIT_TAG} (r${KSU_GIT_VERSION})" >> $GITHUB_ENV
+            echo "✅ Extracted Version Info: ${KSU_GIT_TAG} (r${KSU_GIT_VERSION})"
+            
+            # If variant is KSUN_OP, nuke .git after version extraction & injection
+            if [ "${{ github.event.inputs.KSU_VARIANT }}" == "KSUN_OP" ]; then
+              echo ">>> NUKING .git DIRECTORY FOR KSUN_OP TO FORCE FALLBACK..."
+              rm -rf .git
+            fi
+            cd ..
           else
             echo "KSU_VERSION_INFO=N/A" >> $GITHUB_ENV
-            echo "No .git folder found or KSU disabled, skipping version extraction."
+            echo "⚠️ No .git folder found or KSU disabled, skipping version extraction."
           fi
+
 
       # NEW MOUNT TOGGLE CONDITIONAL
       - name: 🛡️ Apply Mount Hiding, Unicode Fix & Full LTO Patches
