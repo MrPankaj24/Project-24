@@ -544,52 +544,54 @@ jobs:
 #          rm -f fix_susfs_compat_BakaSU.patch
 #          find . -name "*.orig" -delete -o -name "*.rej" -delete    
 
+
       - name: 🔍 Extract Root Manager Version
         id: extract_version
         run: |
           cd ${KERNEL_ROOT}
-          if [ -d "KernelSU" ]; then
-            if [ -d "KernelSU/.git" ]; then
-              cd KernelSU
-              
-              TARGET_REF="HEAD"
-              if git rev-parse --verify FETCH_HEAD >/dev/null 2>&1; then
-                TARGET_REF="FETCH_HEAD"
-              fi
-              
-              KSU_GIT_VERSION=$(git rev-list --count "$TARGET_REF" 2>/dev/null || git rev-list --count HEAD 2>/dev/null || echo 0)
-              KSU_GIT_TAG=$(git describe --tags --abbrev=0 "$TARGET_REF" 2>/dev/null || git describe --tags --abbrev=0 HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo "v0.0.1")
-              KSU_VERSION=$((30000 + KSU_GIT_VERSION))
-              
-              if [ -f "kernel/Kbuild" ]; then
-                cd kernel
-                sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
-                sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
-                cd ..
-              elif [ -f "Kbuild" ]; then
-                sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
-                sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
-              fi
-              
-              VERSION_STR="${KSU_GIT_TAG} (r${KSU_GIT_VERSION} - v${KSU_VERSION})"
-              echo "KSU_VERSION_INFO=${VERSION_STR}" >> $GITHUB_ENV
-              echo "Extracted Version: ${VERSION_STR}"
-              
-              if [ "${{ github.event.inputs.KSU_VARIANT }}" == "KSUN_OP" ]; then
-                echo ">>> NUKING .git DIRECTORY FOR KSUN_OP TO FORCE FALLBACK..."
-                rm -rf .git
-              fi
-              cd ..
-            else
-              # Handles variants where .git was already removed or bypassed
-              VERSION_STR="Custom-Build (r0 - v30000)"
-              echo "KSU_VERSION_INFO=${VERSION_STR}" >> $GITHUB_ENV
-              echo "Extracted Version: ${VERSION_STR}"
+          if [ -d "KernelSU" ] && [ -d "KernelSU/.git" ]; then
+            cd KernelSU
+            
+            # Unshallow repository to ensure git rev-list counts the full commit history accurately
+            echo ">>> Unshallowing KernelSU git history for accurate version calculation..."
+            git fetch --unshallow 2>/dev/null || git fetch --depth=99999 2>/dev/null || true
+            
+            TARGET_REF="HEAD"
+            if git rev-parse --verify FETCH_HEAD >/dev/null 2>&1; then
+              TARGET_REF="FETCH_HEAD"
             fi
+            
+            KSU_GIT_VERSION=$(git rev-list --count "$TARGET_REF" 2>/dev/null || git rev-list --count HEAD 2>/dev/null || echo 0)
+            KSU_GIT_TAG=$(git describe --tags --abbrev=0 "$TARGET_REF" 2>/dev/null || git describe --tags --abbrev=0 HEAD 2>/dev/null || echo "v0.0.1")
+            KSU_COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            KSU_VERSION=$((30000 + KSU_GIT_VERSION))
+            
+            echo ">>> Injecting Version (Tag: $KSU_GIT_TAG | Numeric Version: $KSU_VERSION) into Kbuild..."
+            
+            if [ -f "kernel/Kbuild" ]; then
+              cd kernel
+              sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
+              sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
+              cd ..
+            elif [ -f "Kbuild" ]; then
+              sed -i "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild || true
+              sed -i "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild || true
+            fi
+            
+            VERSION_STR="${KSU_GIT_TAG}-${KSU_COMMIT_HASH} (${KSU_VERSION}/5)"
+            echo "KSU_VERSION_INFO=${VERSION_STR}" >> $GITHUB_ENV
+            echo "Extracted Version: ${VERSION_STR}"
+            
+            if [ "${{ github.event.inputs.KSU_VARIANT }}" == "KSUN_OP" ]; then
+              echo ">>> NUKING .git DIRECTORY FOR KSUN_OP TO FORCE FALLBACK..."
+              rm -rf .git
+            fi
+            cd ..
           else
             echo "KSU_VERSION_INFO=N/A" >> $GITHUB_ENV
-            echo "No KernelSU directory found or KSU disabled."
+            echo "No .git folder found or KSU disabled, skipping version extraction."
           fi
+ 
 
 
 
