@@ -25,8 +25,20 @@ jobs:
 
       - name: 📥 Clone Target Kernel Source
         run: |
-          echo ">>> Cloning Kernel Source: ${{ github.event.inputs.KERNEL_BRANCH }}"
-          git clone --depth=1 -b ${{ github.event.inputs.KERNEL_BRANCH }}${{ github.event.inputs.KERNEL_SOURCE }} kernel_workspace
+          # Use modern inputs syntax, fallback to default if somehow empty
+          REPO_URL="${{ inputs.KERNEL_SOURCE || 'https://github.com/devhunter1/android_kernel_samsung_s5e8535.git' }}"
+          REPO_BRANCH="${{ inputs.KERNEL_BRANCH || 'lineage-24.0' }}"
+          
+          echo ">>> Cloning Kernel Source:"
+          echo "    URL: $REPO_URL"
+          echo "    Branch: $REPO_BRANCH"
+          
+          if [ -z "$REPO_URL" ]; then
+            echo "❌ ERROR: Repository URL is empty!"
+            exit 1
+          fi
+          
+          git clone --depth=1 -b "$REPO_BRANCH" "$REPO_URL" kernel_workspace
 
       - name: 📥 Fetch Patch Repository
         run: |
@@ -39,15 +51,14 @@ jobs:
           HAS_ERRORS=false
           
           echo ">>> Attempting to apply 07_kcal_dqe.patch..."
-          # Check the exit code directly instead of relying on || true
           if ! patch -p1 --forward < ../patch_workspace/1330/test/07_kcal_dqe.patch > ../patch1_output.log 2>&1; then
-            echo "❌ ERROR: 07_kcal_dqe.patch failed or is malformed!"
+            echo "❌ ERROR: 07_kcal_dqe.patch failed!"
             HAS_ERRORS=true
           fi
           
           echo ">>> Attempting to apply 01_autonomous_recovery.patch..."
           if ! patch -p1 --forward < ../patch_workspace/1330/test/01_autonomous_recovery.patch > ../patch2_output.log 2>&1; then
-            echo "❌ ERROR: 01_autonomous_recovery.patch failed or is malformed!"
+            echo "❌ ERROR: 01_autonomous_recovery.patch failed!"
             HAS_ERRORS=true
           fi
           
@@ -61,15 +72,26 @@ jobs:
           echo "------------------------------------------------"
           
           if [ "$HAS_ERRORS" = "true" ]; then
-            echo "❌ WARNING: One or more patches encountered conflicts or syntax errors."
+            echo "❌ WARNING: One or more patches failed to apply or are malformed!"
             echo "HAS_REJECTS=true" >> $GITHUB_ENV
             
-            # Move the logs and any generated reject files to the artifacts folder
+            # Move the logs and any reject files to the artifacts folder
             find kernel_workspace -name "*.rej" -exec cp --parents {} artifacts/ \;
             cp patch1_output.log artifacts/ || true
             cp patch2_output.log artifacts/ || true
             
-            # Force the GitHub Action to fail so it shows a red 'X'
+            # Fail the job explicitly so the GitHub Actions UI shows a red 'X'
             exit 1
           else
-            echo "✅ SUCCESS: Both patches applied cleanly
+            echo "✅ SUCCESS: Both patches applied cleanly with zero errors!"
+            echo "HAS_REJECTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: ⬆️ Upload Error Logs & Rejects (If Failed)
+        # using always() ensures this runs even if the previous step fails (exit 1)
+        if: always() && env.HAS_REJECTS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Patch-Conflicts-Log
+          path: artifacts/
+          retention-days: 3
