@@ -1,4 +1,4 @@
-name: 🧪 Test NTSYNC Patches
+name: 🧪 Test KCAL & Recovery Patches
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   test-patches:
-    name: 🧩 Test NTSYNC Patch Application
+    name: 🧩 Test Patch Application
     runs-on: ubuntu-24.04
 
     steps:
@@ -33,25 +33,25 @@ jobs:
           echo ">>> Cloning MrPankaj24/kernel_patch repository..."
           git clone https://github.com/MrPankaj24/kernel_patch.git patch_workspace
 
-      - name: 🛠️ Apply NTSYNC Patches & Check for Rejects
+      - name: 🛠️ Apply KCAL & Recovery Patches
         run: |
           cd kernel_workspace
           
-          echo ">>> Attempting to apply ntsync_base.patch..."
+          echo ">>> Attempting to apply 07_kcal_dqe.patch..."
           # || true ensures the script doesn't crash so we can collect rejects
-          patch -p1 --forward < ../patch_workspace/ntsync_base.patch > ../patch1_output.log 2>&1 || true
+          patch -p1 --forward < ../patch_workspace/1330/test/07_kcal_dqe.patch > ../patch1_output.log 2>&1 || true
           
-          echo ">>> Attempting to apply ntsync_compat_android13-5.15.patch..."
-          patch -p1 --forward < ../patch_workspace/ntsync_compat_android13-5.15.patch > ../patch2_output.log 2>&1 || true
+          echo ">>> Attempting to apply 01_autonomous_recovery.patch..."
+          patch -p1 --forward < ../patch_workspace/1330/test/01_autonomous_recovery.patch > ../patch2_output.log 2>&1 || true
           
           cd ..
           
-          echo "--- PATCH 1 (BASE) OUTPUT LOG ---"
+          echo "--- PATCH 1 (KCAL DQE) OUTPUT LOG ---"
           cat patch1_output.log
-          echo "---------------------------------"
-          echo "--- PATCH 2 (COMPAT) OUTPUT LOG ---"
+          echo "-------------------------------------"
+          echo "--- PATCH 2 (AUTONOMOUS RECOVERY) OUTPUT LOG ---"
           cat patch2_output.log
-          echo "-----------------------------------"
+          echo "------------------------------------------------"
           
           # Check if any reject files were created inside the kernel workspace
           REJ_COUNT=$(find kernel_workspace -name "*.rej" | wc -l)
@@ -65,7 +65,7 @@ jobs:
             cp patch1_output.log artifacts/
             cp patch2_output.log artifacts/
           else
-            echo "✅ SUCCESS: Both NTSYNC patches applied cleanly with zero rejects!"
+            echo "✅ SUCCESS: Both patches applied cleanly with zero rejects!"
             echo "HAS_REJECTS=false" >> $GITHUB_ENV
           fi
 
@@ -73,6 +73,6 @@ jobs:
         if: env.HAS_REJECTS == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: NTSYNC-Patch-Conflicts
+          name: Patch-Conflicts-Log
           path: artifacts/
           retention-days: 3
