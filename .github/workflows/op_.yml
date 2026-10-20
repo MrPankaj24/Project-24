@@ -428,6 +428,17 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/1330/test/07_kcal_dqe.patch" -o 07_kcal_dqe.patch
           patch -p1 --forward < 07_kcal_dqe.patch || true
           rm 07_kcal_dqe.patch
+          
+          echo ">>> Enabling KCAL configs in custom.config..."
+          CUSTOM_CONFIG_FILE="arch/arm64/configs/custom.config"
+          
+          # Ensure custom.config exists so we can append to it safely
+          touch "$CUSTOM_CONFIG_FILE"
+          
+          echo "CONFIG_KCAL_CTRL=y" >> "$CUSTOM_CONFIG_FILE"
+          echo "CONFIG_DRM_SAMSUNG_DECON=y" >> "$CUSTOM_CONFIG_FILE"
+          echo "✅ KCAL configs injected into ${CUSTOM_CONFIG_FILE} successfully!"
+
 
       - name: 🛡️ Inject KernelSU Variant & Apply Locked SUSFS Patches
         if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT != 'None'
