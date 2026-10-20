@@ -68,7 +68,6 @@ on:
         description: 'SUSFS Commit SHA (Leave empty for latest)'
         required: false
         type: string
-        #default: '687d2d18d94cb2e3e72d1074778d58384d58e379'
         default: '2ad297356931ba06b4edc0860f42fdd143b02ffd'
 
       # TOGGLE FOR MOUNT HIDING
@@ -88,6 +87,10 @@ on:
         default: true
       ENABLE_DROIDSPACE:
         description: 'Apply DroidSpaces Virtualization Patch?'
+        type: boolean
+        default: true
+      ENABLE_KCAL:
+        description: 'Apply KCAL DQE Color Control Patch?'
         type: boolean
         default: true
       ENABLE_CLANG20_FIX:
@@ -416,14 +419,14 @@ jobs:
           patch -p1 --forward < droidspace_1330.patch || true
           rm droidspace_1330.patch
 
-#      - name: 🩹 Apply Services Fix Patch
-#        run: |
-#          cd ${KERNEL_ROOT}
-#          echo ">>> Fetching and applying fix_services.patch..."
-#          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/fix_services.patch" -o fix_services.patch
-#          patch -p1 --forward < fix_services.patch || true
-#          rm -f fix_services.patch
-#          find . -name "*.orig" -delete -o -name "*.rej" -delete
+      - name: 🎨 Fetch & Apply KCAL DQE Patch
+        if: github.event.inputs.ENABLE_KCAL == 'true'
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Downloading and applying KCAL DQE patch..."
+          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/1330/test/07_kcal_dqe.patch" -o 07_kcal_dqe.patch
+          patch -p1 --forward < 07_kcal_dqe.patch || true
+          rm 07_kcal_dqe.patch
 
       - name: 🛡️ Inject KernelSU Variant & Apply Locked SUSFS Patches
         if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT != 'None'
@@ -534,17 +537,6 @@ jobs:
             find . -name "*.orig" -delete -o -name "*.rej" -delete
           fi
 
-#      - name: 🩹 Apply BakaSU SuSFS Compat Fix Patch
-#        if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT == 'BakaSU'
-#        run: |
-#          cd ${KERNEL_ROOT}
-#          echo ">>> Fetching and applying fix_susfs_compat_BakaSU.patch..."
-#          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/for_devhunter1/fix_susfs_compat_BakaSU.patch" -o fix_susfs_compat_BakaSU.patch
-#          patch -p1 --forward < fix_susfs_compat_BakaSU.patch || true
-#          rm -f fix_susfs_compat_BakaSU.patch
-#          find . -name "*.orig" -delete -o -name "*.rej" -delete    
-
-
       - name: 🔍 Extract Root Manager Version
         id: extract_version
         run: |
@@ -592,9 +584,6 @@ jobs:
             echo "No .git folder found or KSU disabled, skipping version extraction."
           fi
  
-
-
-
       # NEW MOUNT TOGGLE CONDITIONAL
       - name: 🛡️ Apply Mount Hiding, Unicode Fix & Full LTO Patches
         run: |
@@ -1024,6 +1013,7 @@ jobs:
             * **Re:Kernel Background Optimization:** `✅ Built-in`
             * **BBRv3 TCP Congestion Control:** `✅ Built-in`
             * **DroidSpaces Virtualization:** `${{ github.event.inputs.ENABLE_DROIDSPACE == 'true' && '✅ Enabled' || '❌ Disabled' }}`
+            * **KCAL DQE Support:** `${{ github.event.inputs.ENABLE_KCAL == 'true' && '✅ Enabled' || '❌ Disabled' }}`
             
             *This release was automatically compiled and published by GitHub Actions.*
           files: |
@@ -1040,7 +1030,7 @@ jobs:
           set -euo pipefail
 
           # --- Validate secrets ---
-          if [ -z "${TELEGRAM_BOT_TOKEN}" ] \vert{}\vert{} [ -z "${TELEGRAM_CHAT_ID}" ]; then
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
             echo "❌ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set in repo secrets!"
             exit 1
           fi
@@ -1055,6 +1045,7 @@ jobs:
           # Feature status parsing
           SUSFS_STATUS=$([ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ] && echo "✅ Enabled" || echo "❌ Disabled")
           OPTS_STATUS=$([ "${{ github.event.inputs.ENABLE_KERNEL_OPTIMIZATIONS }}" == "true" ] && echo "✅ Applied" || echo "❌ Skipped")
+          KCAL_STATUS=$([ "${{ github.event.inputs.ENABLE_KCAL }}" == "true" ] && echo "✅ Enabled" || echo "❌ Disabled")
           HIDE_MODE="${{ github.event.inputs.MOUNT_HIDE_MODE }}"
 
           # --- Build caption message ---
@@ -1076,6 +1067,7 @@ jobs:
           - Baseband Guard: ✅ Built-in
           - Re:Kernel: ✅ Built-in
           - BBRv3 TCP: ✅ Built-in
+          - KCAL DQE: ${KCAL_STATUS}
 
           📅 *Date:* $(date -u '+%Y-%m-%d %H:%M UTC')
           _Powered by GitHub Actions_"
