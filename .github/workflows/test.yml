@@ -6,11 +6,11 @@ on:
       KERNEL_SOURCE:
         description: 'Kernel Source URL to Test Against'
         required: true
-        default: 'https://github.com/MrPankaj24/kernel_common_modifications'
+        default: 'https://github.com/devhunter1/android_kernel_samsung_s5e8535.git'
       KERNEL_BRANCH:
         description: 'Kernel Branch to Test Against'
         required: true
-        default: 'susfs-2.1.0+zeromount'
+        default: 'lineage-24.0'
 
 jobs:
   test-patches:
