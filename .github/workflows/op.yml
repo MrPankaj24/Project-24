@@ -17,7 +17,7 @@ on:
         description: 'Kernel Branch'
         required: true
         type: string
-        default: 'lineage-23.2'
+        default: 'lineage-24.0'
       DEVICE_DEFCONFIG:
         description: 'Target Device Defconfig'
         required: true
