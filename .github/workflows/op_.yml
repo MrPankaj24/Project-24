@@ -90,10 +90,6 @@ on:
         description: 'Apply DroidSpaces Virtualization Patch?'
         type: boolean
         default: true
-      ENABLE_KCAL:
-        description: 'Apply KCAL DQE Color Control Patch?'
-        type: boolean
-        default: true
       ENABLE_CLANG20_FIX:
         description: 'Apply Clang-20/22 sizeof-pointer-memaccess OVT Touchscreen Fix?'
         type: boolean
@@ -418,26 +414,6 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/main/Droidspace/droidspace_for_1330.patch" -o droidspace_1330.patch
           patch -p1 --forward < droidspace_1330.patch || true
           rm droidspace_1330.patch
-
-      - name: 🎨 Fetch & Apply KCAL DQE Patch
-        if: github.event.inputs.ENABLE_KCAL == 'true'
-        run: |
-          cd ${KERNEL_ROOT}
-          echo ">>> Downloading and applying KCAL DQE patch..."
-          curl -LSs "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/1330/test/07_kcal_dqe.patch" -o 07_kcal_dqe.patch
-          patch -p1 --forward < 07_kcal_dqe.patch || true
-          rm 07_kcal_dqe.patch
-          
-          echo ">>> Enabling KCAL configs in custom.config..."
-          CUSTOM_CONFIG_FILE="arch/arm64/configs/custom.config"
-          
-          # Ensure custom.config exists so we can append to it safely
-          touch "$CUSTOM_CONFIG_FILE"
-          
-          echo "CONFIG_KCAL_CTRL=y" >> "$CUSTOM_CONFIG_FILE"
-          echo "CONFIG_DRM_SAMSUNG_DECON=y" >> "$CUSTOM_CONFIG_FILE"
-          echo "✅ KCAL configs injected into ${CUSTOM_CONFIG_FILE} successfully!"
-
 
       - name: 🛡️ Inject KernelSU Variant & Apply Locked SUSFS Patches
         if: github.event.inputs.ENABLE_KSU == 'true' && github.event.inputs.KSU_VARIANT != 'None'
@@ -1024,7 +1000,6 @@ jobs:
             * **Re:Kernel Background Optimization:** `✅ Built-in`
             * **BBRv3 TCP Congestion Control:** `✅ Built-in`
             * **DroidSpaces Virtualization:** `${{ github.event.inputs.ENABLE_DROIDSPACE == 'true' && '✅ Enabled' || '❌ Disabled' }}`
-            * **KCAL DQE Support:** `${{ github.event.inputs.ENABLE_KCAL == 'true' && '✅ Enabled' || '❌ Disabled' }}`
             
             *This release was automatically compiled and published by GitHub Actions.*
           files: |
@@ -1056,7 +1031,6 @@ jobs:
           # Feature status parsing
           SUSFS_STATUS=$([ "${{ github.event.inputs.ENABLE_SUSFS }}" == "true" ] && echo "✅ Enabled" || echo "❌ Disabled")
           OPTS_STATUS=$([ "${{ github.event.inputs.ENABLE_KERNEL_OPTIMIZATIONS }}" == "true" ] && echo "✅ Applied" || echo "❌ Skipped")
-          KCAL_STATUS=$([ "${{ github.event.inputs.ENABLE_KCAL }}" == "true" ] && echo "✅ Enabled" || echo "❌ Disabled")
           HIDE_MODE="${{ github.event.inputs.MOUNT_HIDE_MODE }}"
 
           # --- Build caption message ---
@@ -1078,7 +1052,6 @@ jobs:
           - Baseband Guard: ✅ Built-in
           - Re:Kernel: ✅ Built-in
           - BBRv3 TCP: ✅ Built-in
-          - KCAL DQE: ${KCAL_STATUS}
 
           📅 *Date:* $(date -u '+%Y-%m-%d %H:%M UTC')
           _Powered by GitHub Actions_"
