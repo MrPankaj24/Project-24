@@ -22,7 +22,7 @@ on:
         description: 'Target Device Defconfig'
         required: true
         type: string
-        default: 'm14x_defconfig'
+        default: 's5e8535-m14xnsxx_defconfig'
 
       # --- 2. TOOLCHAIN & ACCELERATION ---
       toolchain_mode:
@@ -59,7 +59,7 @@ on:
         description: 'KernelSU Manager Branch (main, resuki, dev, canary)'
         required: true
         type: string
-        default: 'main'
+        default: 'sync-up'
       ENABLE_SUSFS:
         description: 'Apply SUSFS Root Stealth Patches?'
         type: boolean
@@ -69,7 +69,7 @@ on:
         required: false
         type: string
 #        default: '2ad297356931ba06b4edc0860f42fdd143b02ffd'
-        default: '1046449aef569550bd0d6f824f548377aae573a4'
+        default: 'fe943d15ec6a1891f7a360bf210589bdffe4e318'
 
       # TOGGLE FOR MOUNT HIDING
       MOUNT_HIDE_MODE:
