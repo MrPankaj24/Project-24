@@ -183,13 +183,23 @@ jobs:
 
       - name: 📦 Install Tools & Dependencies
         run: |
-          sudo apt-get update
+          # 1. Fix runner DNS by prepending Cloudflare & Google nameservers
+          sudo sed -i '1s/^/nameserver 1.1.1.1\nnameserver 8.8.8.8\n/' /etc/resolv.conf
+
+          # 2. Force IPv4 and configure apt retries
+          echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+          echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/80-retries
+
+          # 3. Update package index with a retry loop
+          for i in 1 2 3; do sudo apt-get update && break || sleep 5; done
+
+          # 4. Install build dependencies
           sudo apt-get install -y bc bison build-essential flex git lld llvm python3 \
-          curl wget libssl-dev libelf-dev python3-setuptools python-is-python3 \
-          make gcc gcc-aarch64-linux-gnu binutils binutils-aarch64-linux-gnu g++ \
-          cpio zip unzip lz4 zstd xz-utils libncurses-dev libncurses5-dev \
-          kmod rsync clang dwarves pahole ccache device-tree-compiler zlib1g-dev \
-          libc6-dev-i386 cmake ninja-build file patch sudo
+            curl wget libssl-dev libelf-dev python3-setuptools python-is-python3 \
+            make gcc gcc-aarch64-linux-gnu binutils binutils-aarch64-linux-gnu g++ \
+            cpio zip unzip lz4 zstd xz-utils libncurses-dev libncurses5-dev \
+            kmod rsync clang dwarves pahole ccache device-tree-compiler zlib1g-dev \
+            libc6-dev-i386 cmake ninja-build file patch sudo
 
       - name: ⚙️ Export ccache + determinism
         if: contains(github.event.inputs.toolchain_mode, 'ccache')
