@@ -703,7 +703,7 @@ jobs:
           set -euo pipefail
           cd "${KERNEL_ROOT}"
           echo ">>> Downloading and applying 10_clang22_compatibility.patch..."
-          curl -fL -sS --retry 3 --retry-delay 2 --connect-timeout 20 "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/1330/test/10_clang22_compatibility.patch" -o 10_clang22_compatibility.patch
+          curl -fL -sS --retry 3 --retry-delay 2 --connect-timeout 20 "https://raw.githubusercontent.com/MrPankaj24/kernel_patch/refs/heads/main/1330/kernel_build_fixes.patch" -o 10_clang22_compatibility.patch
           patch -p1 --forward < 10_clang22_compatibility.patch || true
           rm -f 10_clang22_compatibility.patch
           find . -name "*.orig" -delete -o -name "*.rej" -delete
