@@ -360,12 +360,14 @@ jobs:
           CONFIG_LTO_CLANG_FULL=y
           CONFIG_ARCH_SUPPORTS_LTO_CLANG_FULL=y
           # CONFIG_LTO_CLANG_THIN is not set
-          CONFIG_USB_XHCI_HCD=y
-          CONFIG_USB_XHCI_PLATFORM=y
-          CONFIG_USB_XHCI_EXYNOS=y
-          CONFIG_USB_DWC3=y
-          CONFIG_USB_DWC3_EXYNOS=y
-          CONFIG_USB_EXYNOS_USBDRD=y
+          # Force standard ALSA USB Audio and disable broken Samsung ABOX URAM offload
+          CONFIG_SND_USB=y
+          CONFIG_SND_USB_AUDIO=y
+          CONFIG_SND_USB_AUDIO_USE_MEDIA_CONTROLLER=y
+          # CONFIG_SND_EXYNOS_USB_AUDIO is not set
+          # CONFIG_SND_EXYNOS_USB_AUDIO_GIC is not set
+          CONFIG_SND_EXYNOS_USB_AUDIO=n
+          CONFIG_SND_EXYNOS_USB_AUDIO_GIC=n
           EOF
           echo "✅ Generated arch/arm64/configs/su.config successfully!"
 
