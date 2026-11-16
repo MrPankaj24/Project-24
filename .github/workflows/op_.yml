@@ -367,19 +367,15 @@ jobs:
           CONFIG_USB_DWC3=y
           CONFIG_USB_DWC3_EXYNOS=y
           CONFIG_USB_EXYNOS_USBDRD=y
-
-          # USB Audio (Standard ALSA only - Fixes DAC playback panic)
-          CONFIG_SND_USB=y
-          CONFIG_SND_USB_AUDIO=y
-          CONFIG_SND_USB_AUDIO_USE_MEDIA_CONTROLLER=y
-          CONFIG_SND_EXYNOS_USB_AUDIO=n
-          CONFIG_SND_EXYNOS_USB_AUDIO_GIC=n# USB Host Built-in (Fixes xhci_exynos probe crash)
+          
+          # USB Host & PHY Built-in (Fixes xhci_exynos probe crash)
           CONFIG_USB_XHCI_HCD=y
           CONFIG_USB_XHCI_PLATFORM=y
           CONFIG_USB_XHCI_EXYNOS=y
           CONFIG_USB_DWC3=y
           CONFIG_USB_DWC3_EXYNOS=y
           CONFIG_USB_EXYNOS_USBDRD=y
+          CONFIG_PHY_EXYNOS_USBDRD=y
 
           # USB Audio (Standard ALSA only - Fixes DAC playback panic)
           CONFIG_SND_USB=y
@@ -867,6 +863,17 @@ jobs:
           rm -rf /tmp/wk_patches
           find . -name "*.orig" -delete -o -name "*.rej" -delete
           echo "✅ Exynos 5.15 optimization suite applied successfully!"
+
+      - name: 🛠️ Fix Exynos USBDRD PHY Implicit Declaration
+        run: |
+          cd ${KERNEL_ROOT}
+          echo ">>> Guarding exynos_usbdrd_phy_set_common in phy-exynos-usbdrd.c..."
+          PHY_FILE="drivers/phy/samsung/phy-exynos-usbdrd.c"
+          if [ -f "$PHY_FILE" ]; then
+            sed -i 's/ret = exynos_usbdrd_phy_set_common(phy_drd, mode, submode);/#if IS_ENABLED(CONFIG_SND_EXYNOS_USB_AUDIO)\n\t\tret = exynos_usbdrd_phy_set_common(phy_drd, mode, submode);\n#else\n\t\tret = 0;\n#endif/' "$PHY_FILE"
+            echo "✅ Patched $PHY_FILE successfully!"
+          fi
+          
         
       - name: 🧼 Remove -dirty tag (Commit all changes)
         run: |
