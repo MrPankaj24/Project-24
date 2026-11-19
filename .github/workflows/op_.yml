@@ -620,7 +620,7 @@ jobs:
             rm -rf /tmp/NoMount-Suite
             git clone --depth=1 https://github.com/Bouteillepleine/NoMount-Suite.git /tmp/NoMount-Suite
 
-            patch -p1 --fuzz=0 --forward < /tmp/NoMount-Suite/hookless/patches/nomount_kernel_integration.patch
+            patch -p1 < /tmp/NoMount-Suite/hookless/patches/nomount_kernel_integration.patch
             cp /tmp/NoMount-Suite/hookless/src/nomount.c /tmp/NoMount-Suite/hookless/src/nomount.h fs/
             rm -rf /tmp/NoMount-Suite
 
