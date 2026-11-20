@@ -36,8 +36,8 @@ on:
           - google-clang-17-nocache
           - google-clang-ccache
           - google-clang-nocache
-          - repo-tarxz-ccache
-          - repo-tarxz-nocache
+          - repo-t-ccache
+          - repo-t-nocache
         default: llvm22-ccache
 
       # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
@@ -71,7 +71,7 @@ on:
         required: false
         type: string
 #        default: '2ad297356931ba06b4edc0860f42fdd143b02ffd'
-        default: 'fe943d15ec6a1891f7a360bf210589bdffe4e318'
+        default: 'c1d1da42b74771944207ec45aaceff9c57e84985'
 
       # TOGGLE FOR MOUNT HIDING
       MOUNT_HIDE_MODE:
@@ -298,10 +298,10 @@ jobs:
               echo "COMPILER_CC=clang" >> $GITHUB_ENV
             fi
 
-          elif [[ "${{ github.event.inputs.toolchain_mode }}" == *"repo-tarxz"* ]]; then
-            echo ">>> Extracting repo .tar.xz toolchain archives directly..."
-            ARCHIVE_DIR="${GITHUB_WORKSPACE}/.tar.xz"
-            TOOLCHAIN_DEST="${GITHUB_WORKSPACE}/toolchains/repo-tarxz"
+          elif [[ "${{ github.event.inputs.toolchain_mode }}" == *"repo-t"* ]]; then
+            echo ">>> Extracting repo T/ .tar.xz toolchain archives directly..."
+            ARCHIVE_DIR="${GITHUB_WORKSPACE}/T"
+            TOOLCHAIN_DEST="${GITHUB_WORKSPACE}/toolchains/T"
             mkdir -p "${TOOLCHAIN_DEST}"
 
             if [ ! -d "${ARCHIVE_DIR}" ]; then
@@ -388,7 +388,6 @@ jobs:
           CONFIG_SECURITY_DEFEX=n
           CONFIG_PROCA=n
           CONFIG_FIVE=n
-
 
           # Force Load Kernel Modules
           CONFIG_MODULES=y
