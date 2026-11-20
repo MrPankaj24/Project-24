@@ -36,6 +36,8 @@ on:
           - google-clang-17-nocache
           - google-clang-ccache
           - google-clang-nocache
+          - repo-tarxz-ccache
+          - repo-tarxz-nocache
         default: llvm22-ccache
 
       # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
@@ -295,6 +297,41 @@ jobs:
             else
               echo "COMPILER_CC=clang" >> $GITHUB_ENV
             fi
+
+          elif [[ "${{ github.event.inputs.toolchain_mode }}" == *"repo-tarxz"* ]]; then
+            echo ">>> Extracting repo .tar.xz toolchain archives directly..."
+            ARCHIVE_DIR="${GITHUB_WORKSPACE}/.tar.xz"
+            TOOLCHAIN_DEST="${GITHUB_WORKSPACE}/toolchains/repo-tarxz"
+            mkdir -p "${TOOLCHAIN_DEST}"
+
+            if [ ! -d "${ARCHIVE_DIR}" ]; then
+              echo "❌ Directory not found: ${ARCHIVE_DIR}"
+              exit 1
+            fi
+
+            shopt -s nullglob
+            ARCHIVES=("${ARCHIVE_DIR}"/*.tar.xz)
+            if [ ${#ARCHIVES[@]} -eq 0 ]; then
+              echo "❌ No .tar.xz files found in ${ARCHIVE_DIR}"
+              exit 1
+            fi
+
+            for archive in "${ARCHIVES[@]}"; do
+              echo "  -> Extracting $(basename "$archive") into ${TOOLCHAIN_DEST}..."
+              tar -xJf "$archive" -C "${TOOLCHAIN_DEST}"
+            done
+
+            if [ -d "${TOOLCHAIN_DEST}/bin" ]; then
+              echo "COMPILER_PATH=${TOOLCHAIN_DEST}/bin:${TOOLCHAIN_DEST}:/usr/bin" >> $GITHUB_ENV
+            else
+              echo "COMPILER_PATH=${TOOLCHAIN_DEST}:/usr/bin" >> $GITHUB_ENV
+            fi
+
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang" >> $GITHUB_ENV
+            fi
             
           else
             echo ">>> Fetching Google Clang (r487747c - Android 14 Stable)..."
@@ -419,7 +456,7 @@ jobs:
             download_config "${{ env.NETHUNTER_CONFIG_URL }}" "nethunter.config"
           fi
           if [ "${{ github.event.inputs.ENABLE_CUSTOM_CONFIG }}" == "true" ]; then
-            download_config "${{ github.event.inputs.CUSTOM_CONFIG_URL }}" "custom.config"
+            download_config "${{ env.CUSTOM_CONFIG_URL }}" "custom.config"
           fi
 
       - name: 📥 Fetch & Apply DroidSpaces Patch
