@@ -61,7 +61,7 @@ on:
         description: 'KernelSU Manager Branch (main, resuki, dev, canary)'
         required: true
         type: string
-        default: 'sync-up'
+        default: 'main'
       ENABLE_SUSFS:
         description: 'Apply SUSFS Root Stealth Patches?'
         type: boolean
