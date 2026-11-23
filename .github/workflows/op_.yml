@@ -40,7 +40,7 @@ on:
           - google-clang-17-nocache
           - google-clang-ccache
           - google-clang-nocache
-        default: llvm22-ccache
+        default: llvm23-ccache
 
       # --- 3. KERNELSU & ROOT STEALTH TOGGLES ---
       ENABLE_KSU:
