@@ -30,6 +30,10 @@ on:
         required: true
         type: choice
         options:
+          - llvm24-ccache
+          - llvm24-nocache
+          - llvm23-ccache
+          - llvm23-nocache
           - llvm22-ccache
           - llvm22-nocache
           - google-clang-17-ccache
@@ -256,7 +260,33 @@ jobs:
           mkdir -p ${GITHUB_WORKSPACE}/toolchains
           cd ${GITHUB_WORKSPACE}/toolchains
 
-          if [[ "${{ github.event.inputs.toolchain_mode }}" == *"llvm22"* ]]; then
+          if [[ "${{ github.event.inputs.toolchain_mode }}" == *"llvm24"* ]]; then
+            echo ">>> Installing LLVM 24 (development) from official APT repository..."
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 24
+            sudo apt-get install -y clang-24 lld-24 llvm-24
+            sudo ln -sf /usr/bin/clang-24 /usr/bin/clang || true
+            sudo ln -sf /usr/bin/ld.lld-24 /usr/bin/ld.lld || true
+            echo "COMPILER_PATH=/usr/lib/llvm-24/bin:/usr/bin" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang-24" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang-24" >> $GITHUB_ENV
+            fi
+
+          elif [[ "${{ github.event.inputs.toolchain_mode }}" == *"llvm23"* ]]; then
+            echo ">>> Installing LLVM 23 (stable) from official APT repository..."
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 23
+            sudo apt-get install -y clang-23 lld-23 llvm-23
+            sudo ln -sf /usr/bin/clang-23 /usr/bin/clang || true
+            sudo ln -sf /usr/bin/ld.lld-23 /usr/bin/ld.lld || true
+            echo "COMPILER_PATH=/usr/lib/llvm-23/bin:/usr/bin" >> $GITHUB_ENV
+            if [[ "${{ github.event.inputs.toolchain_mode }}" == *"ccache"* ]]; then
+              echo "COMPILER_CC=ccache clang-23" >> $GITHUB_ENV
+            else
+              echo "COMPILER_CC=clang-23" >> $GITHUB_ENV
+            fi
+
+          elif [[ "${{ github.event.inputs.toolchain_mode }}" == *"llvm22"* ]]; then
             echo ">>> Installing LLVM 22 from official APT repository..."
             wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 22
             sudo apt-get install -y clang-22 lld-22 llvm-22
@@ -297,6 +327,7 @@ jobs:
               echo "COMPILER_CC=clang" >> $GITHUB_ENV
             fi
           fi
+
 
       - name: ⬇️ Download AOSP Kernel Build Tools
         run: |
