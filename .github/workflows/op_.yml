@@ -84,7 +84,7 @@ on:
           - 'NoMount'
           - 'NoMount-Suite'
           - 'None'
-        default: 'NoMount'
+        default: 'NoMount-Suite'
 
       # --- 4. OPTIMIZATION & FEATURE PATCH CHECKBOXES ---
       ENABLE_KERNEL_OPTIMIZATIONS:
